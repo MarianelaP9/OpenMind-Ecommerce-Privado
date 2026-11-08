@@ -1,0 +1,58 @@
+/* Importación segura de presets. Estilo funcional; diseño final pendiente. */
+.ve-properties .om-import {
+  display: grid; gap: 10px; box-sizing: border-box; width: 100%; min-width: 0;
+  margin: 16px 0; padding: 14px; border: 1px solid #ced9e9; border-radius: 12px;
+  background: #f6f8fc; color: #172338; font-size: 13px;
+}
+.om-import *, .om-import *::after { box-sizing: border-box; }
+.om-import h3 { margin: 0; font-size: 15px; color: #172338; }
+.om-import p { margin: 0; font-size: 12px; line-height: 1.45; color: #475569; }
+.om-import small { display: block; font-size: 11px; line-height: 1.45; color: #526077; }
+.om-import__file { display: grid; gap: 6px; font-weight: 650; font-size: 12px; }
+.om-import__file input { display: block; width: 100%; max-width: 100%; color: #263856; font-size: 12px; }
+.om-import__error { color: #a11a21 !important; }
+.om-import__message { color: #206036 !important; }
+.om-import__items { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; }
+.om-import__item { display: grid; grid-template-columns: minmax(0,1fr) 32px; gap: 5px; }
+.om-import__item button { min-height: 36px; border-radius: 8px; border: 1px solid #bfcde0; background: white; color: #1b3050; cursor: pointer; }
+.om-import__item button:first-child { padding: 7px 10px; text-align: left; overflow-wrap: anywhere; }
+.om-import__item button[aria-pressed="true"] { border-color: #365dce; background: #eaf0ff; }
+.om-import__remove { font-size: 18px; }
+.om-import__preview { display: grid; gap: 9px; border-top: 1px solid #cbd7e6; padding-top: 10px; }
+.om-import__scene { position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16/9; border-radius: 10px; background: #214a75; }
+.om-import__back, .om-import__front { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; color: white; font-size: 17px; }
+.om-import__back { background: linear-gradient(130deg,#27537a,#568b78); }
+.om-import__front { background: linear-gradient(130deg,#9d569b,#db9b56); }
+.om-import__sample { position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16/9; border-radius: 10px; cursor: pointer; }
+.om-import__sample-art { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(110deg,#9dbc87,#356b4c); font-size: 50px; transition: transform 450ms ease-out; }
+.om-import__sample::after { content: ''; position: absolute; inset: 0; opacity: 0; pointer-events: none; background: var(--om-import-overlay-background,transparent); }
+.om-import__repeat, .om-import__apply { min-height: 38px; padding: 8px; border: 0; border-radius: 9px; cursor: pointer; font-weight: 650; }
+.om-import__repeat { color: #1a3b89; border: 1px solid #b8c9e2; background: #fff; }
+.om-import__apply { color: #fff; background: #315acc; }
+.om-import__apply:disabled { color: #28436b; background: #e2e9f3; cursor: default; }
+.om-import button:focus-visible, .om-import input:focus-visible, .om-import__sample:focus-visible { outline: 3px solid #365dce; outline-offset: 2px; }
+@media (hover:hover) and (pointer:fine) {
+  .om-import__sample:hover .om-import__sample-art, .om-import__sample:focus-visible .om-import__sample-art { transform: var(--om-import-motion,none); }
+  .om-import__sample:hover::after, .om-import__sample:focus-visible::after { animation: var(--om-import-overlay-animation,none); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .om-import__sample-art { transition: none !important; transform: none !important; }
+  .om-import__sample::after, .om-import__front { animation: none !important; }
+}
+
+.om-import__scene.hero-carousel { position: relative; width: 100%; height: auto; inset: auto; }
+
+/* OPENMIND_DIRECT_CATALOG_V2: funcional primero, diseño integral después. */
+.om-import__tabs { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px; }
+.om-import__tabs button { min-height:38px;padding:8px;border-radius:9px;border:1px solid #b9c9e0;background:#fff;color:#253650;font-size:12px;font-weight:650;cursor:pointer; }
+.om-import__tabs button[aria-pressed="true"] { background:#e6efff;color:#173f89;border-color:#557fd3; }
+.om-import__search-label { display:block;font-size:12px;font-weight:650;color:#172338; }
+.ve-properties .om-import input.om-import__search, .om-import__search { display:block;min-width:0;max-width:100%;width:100%;height:38px;padding:7px 10px;border:1px solid #afc4df;border-radius:8px;background:white;color:#172338;font:inherit; }
+.om-import__catalog-results { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:260px;overflow-y:auto;padding:2px; }
+.om-import__catalog-choice { display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;min-height:55px;padding:8px;border:1px solid #bdcce1;border-radius:8px;background:#fff;color:#162e55;text-align:left;cursor:pointer; }
+.om-import__catalog-choice span { font-size:12px;font-weight:700;line-height:1.25;overflow-wrap:anywhere; }
+.om-import__catalog-choice small { margin:0;color:#56657b;font-size:10px;line-height:1.3; }
+.om-import__catalog-choice[aria-pressed="true"] { background:#e8efff;border-color:#456bce;box-shadow:inset 0 0 0 1px #456bce; }
+.om-import__catalog-choice:hover { border-color:#4266c8; }
+.om-import__search:focus-visible,.om-import__catalog-choice:focus-visible,.om-import__tabs button:focus-visible { outline:3px solid #4266c8;outline-offset:2px; }
+@media (max-width:380px) { .om-import__catalog-results {grid-template-columns:minmax(0,1fr);} }
