@@ -1,7 +1,7 @@
 export interface BeneficioLanding {
   titulo: string;
   descripcion: string;
-  icono: 'truck' | 'lock' | 'return' | 'chat';
+  icono: import('./benefitIcons').BenefitIcon;
 }
 export interface ContactoLanding {
   telefono: string; whatsapp: string; correo: string; instagram: string;
@@ -13,7 +13,7 @@ export interface UbicacionLanding {
   direccion: string; comuna: string; ciudad: string; region: string; enlace_maps: string;
 }
 export type TipoBloqueLanding = 'historia' | 'imagen_texto' | 'texto' | 'galeria' | 'cita' | 'personalizada';
-export interface ImagenBloqueLanding { id: string; src: string; alt: string }
+export interface ImagenBloqueLanding { id: string; src: string; alt: string; video_recurso_id?: string }
 export interface BloqueLanding {
   id: string; tipo: TipoBloqueLanding; visible: boolean;
   titulo: string; subtitulo: string; texto: string; imagenes: ImagenBloqueLanding[];
@@ -22,6 +22,8 @@ export interface BloqueLanding {
   actividad?: import('./sectionElements').SectionActivity | null;
 }
 export interface ContenidoLanding {
+  /** Modo global del texto del carrusel. Ausente conserva la compatibilidad anterior. */
+  carrusel_texto_modo?: 'unico' | 'por_imagen';
   /** Stable references to existing sections and unique commerce slots; no copied content. */
   orden_apartados?: string[];
   /** Absent keeps legacy template content; an explicit empty list hides it. */
@@ -34,7 +36,12 @@ export interface ContenidoLanding {
   ubicacion: UbicacionLanding;
 }
 
+export interface CarouselSlideContent {
+  titulo?: string; descripcion?: string; texto_boton?: string; enlace?: string;
+  mostrar_titulo?: boolean; mostrar_descripcion?: boolean; mostrar_boton?: boolean;
+}
 export interface ImagenCarruselLanding {
+  tipo?: 'imagen' | 'video'; contenido?: CarouselSlideContent; recurso_id?: string;
   id: string;
   archivo: string;
   orden: number;

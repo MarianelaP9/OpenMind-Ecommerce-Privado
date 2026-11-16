@@ -516,10 +516,13 @@ class IniciarPagoTransbankUseCase:
             if not monto.is_finite() or monto <= 0 or monto != monto.to_integral_value():
                 raise ConfiguracionPagoInvalidaException("Webpay requiere un total positivo en pesos enteros.")
 
-            # Si Webpay ya respondió correctamente, reutilizar el token y la URL.
-            if pedido.webpay_token and pedido.webpay_url:
+            from apps.core.infrastructure.expiracion_pedidos import pedido_expirado, token_webpay_vigente
+
+            if pedido_expirado(pedido):
+                raise ConfiguracionPagoInvalidaException("Este pedido expiró. Realiza una nueva compra.")
+            if token_webpay_vigente(pedido):
                 return {"token": pedido.webpay_token, "url": pedido.webpay_url}
-            if pedido.webpay_token or pedido.webpay_url:
+            if bool(pedido.webpay_token) != bool(pedido.webpay_url):
                 raise TransbankTransaccionException("El inicio de Webpay requiere revisión.")
 
             config = ConfiguracionTransbank.objects.filter(id_tienda_id=tienda_pk).first()
@@ -548,7 +551,8 @@ class IniciarPagoTransbankUseCase:
                 raise TransbankTransaccionException("Webpay devolvió una transacción incompleta.")
             pedido.webpay_token = respuesta["token"]
             pedido.webpay_url = respuesta["url"]
-            pedido.save(update_fields=["webpay_token", "webpay_url"])
+            pedido.webpay_iniciado_en = timezone.now()
+            pedido.save(update_fields=["webpay_token", "webpay_url", "webpay_iniciado_en"])
             return {"token": pedido.webpay_token, "url": pedido.webpay_url}
 
     def ejecutar(self, *args, **kwargs) -> Dict[str, Any]:
@@ -606,7 +610,11 @@ class ConfirmarPagoTransbankUseCase:
                 tienda_id=tienda_pk, medio_pago="Transbank", estado="pendiente", webpay_token=token_ws
             ).first()
             if pedido:
-                notificar_pago_rechazado(pedido)
+                try:
+                    notificar_pago_rechazado(pedido)
+                finally:
+                    Pedido.objects.filter(pk=pedido.pk, estado="pendiente", webpay_token=token_ws).update(
+                        webpay_token="", webpay_url="")
         except Exception:
             logging.getLogger(__name__).exception("No se pudo avisar el pago rechazado de Webpay.")
 
@@ -636,6 +644,9 @@ class ConfirmarPagoTransbankUseCase:
             if pasa_a_pagado:
                 pedido.estado = "pagado"
                 pedido.save(update_fields=["estado"])
+        if pedido.estado in Pedido.ESTADOS_PAGADOS:
+            from apps.core.infrastructure.stock_pedidos import descontar_stock_de_pedido
+            descontar_stock_de_pedido(pedido.pk)
         if pasa_a_pagado:
             # Correo de pago exitoso al comprador (SCRUM-429); no interrumpe la confirmación si falla.
             from apps.core.infrastructure.notificaciones_pedido import notificar_cambio_de_estado
@@ -763,6 +774,130 @@ class SoftDeleteProductUseCase:
         return {"exito": True, "mensaje": "Producto eliminado lógicamente de forma correcta."}
 
 
+class HardDeleteProductUseCase:
+    """Elimina definitivamente un producto del catálogo preservando ventas, pedidos y reportes."""
+
+    @staticmethod
+    def _detach_and_delete_sql_product(
+        sql_product: Producto,
+        fallback_name: str = "",
+        mongo_id: str = "",
+    ) -> None:
+        from apps.core.models import ItemPedido
+
+        resolved_name = (fallback_name or sql_product.nombre or "")[:200]
+        if resolved_name:
+            ItemPedido.objects.filter(
+                id_producto_id=sql_product.pk,
+                nombre_producto="",
+            ).update(nombre_producto=resolved_name)
+        if mongo_id:
+            ItemPedido.objects.filter(
+                id_producto_id=sql_product.pk,
+                producto_mongo_id="",
+            ).update(producto_mongo_id=mongo_id)
+
+        # Desvincular ItemPedido antes de borrar Producto porque ItemPedido.id_producto usa CASCADE;
+        # así se conserva íntegro el historial de pedidos y reportes de ventas.
+        ItemPedido.objects.filter(id_producto_id=sql_product.pk).update(id_producto=None)
+        ItemCarrito.objects.filter(id_producto_id=sql_product.pk).delete()
+        sql_product.delete()
+
+    @staticmethod
+    def _remove_featured_reference(tienda_id: str, mongo_id: str) -> None:
+        import copy
+        from apps.landing.models import ConfiguracionLanding
+
+        landing = ConfiguracionLanding.objects.filter(tienda_id=tienda_id).first()
+        if landing and isinstance(landing.contenido, dict):
+            featured = landing.contenido.get("productos_destacados")
+            if isinstance(featured, list) and mongo_id in featured:
+                contenido = copy.deepcopy(landing.contenido)
+                contenido["productos_destacados"] = [
+                    pid for pid in featured if pid != mongo_id
+                ]
+                landing.contenido = contenido
+                landing.save(update_fields=["contenido"])
+
+    def execute(self, id_producto: Any, tienda_id: str, confirmacion: Any) -> dict:
+        if not isinstance(confirmacion, str) or confirmacion.strip().casefold() != "eliminar":
+            raise ValueError("Debes escribir 'eliminar' para confirmar la eliminación definitiva.")
+
+        from apps.core.models import ItemPedido
+
+        tienda_id_str = str(tienda_id)
+
+        if ObjectId.is_valid(str(id_producto)):
+            repository = ProductRepository()
+            product = repository.get_admin_product(tienda_id_str, str(id_producto))
+            if product is None:
+                raise LookupError("El producto no existe en el catálogo.")
+
+            mongo_id = str(product["_id"])
+            product_name = str(product.get("nombre") or "")[:200]
+            sql_id = product.get("id_producto")
+            if sql_id is None:
+                sql_id = product.get("id_postgresql")
+
+            with transaction.atomic():
+                if product_name:
+                    ItemPedido.objects.filter(
+                        id_pedido__tienda_id=tienda_id_str,
+                        producto_mongo_id=mongo_id,
+                        nombre_producto="",
+                    ).update(nombre_producto=product_name)
+
+                if sql_id is not None:
+                    try:
+                        sql_id_int = int(sql_id)
+                    except (TypeError, ValueError):
+                        sql_id_int = None
+                    if sql_id_int is not None:
+                        sql_product = Producto.objects.filter(
+                            pk=sql_id_int, id_tienda_id=tienda_id_str
+                        ).first()
+                        if sql_product is not None:
+                            self._detach_and_delete_sql_product(
+                                sql_product,
+                                fallback_name=product_name,
+                                mongo_id=mongo_id,
+                            )
+
+                self._remove_featured_reference(tienda_id_str, mongo_id)
+
+                if not repository.delete(tienda_id_str, mongo_id):
+                    raise RuntimeError("No se pudo eliminar el producto del catálogo.")
+
+            return {
+                "exito": True,
+                "mensaje": "Producto eliminado definitivamente. La información de ventas se conserva intacta.",
+            }
+
+        try:
+            sql_id_int = int(id_producto)
+        except (TypeError, ValueError):
+            raise LookupError("El producto no existe en el catálogo.") from None
+
+        with transaction.atomic():
+            sql_product = Producto.objects.filter(
+                pk=sql_id_int, id_tienda_id=tienda_id_str
+            ).first()
+            if sql_product is None:
+                raise LookupError("El producto no existe en el catálogo.")
+
+            self._detach_and_delete_sql_product(sql_product)
+
+            db = get_mongo_db()
+            db.productos.delete_many(
+                {"id_postgresql": sql_id_int, "tienda_id": tienda_id_str}
+            )
+
+        return {
+            "exito": True,
+            "mensaje": "Producto eliminado definitivamente. La información de ventas se conserva intacta.",
+        }
+
+
 class CreateProductUseCase:
     """Crea un producto nuevo en el catálogo de la tienda (RF-03.4 / tarea de creación)."""
 
@@ -783,6 +918,7 @@ class CreateProductUseCase:
             "activo": data.get("activo", True),
             "fecha_creacion": timezone.now(),
             "imagenes": data.get("imagenes", []),
+            "video_recurso_id": data.get("video_recurso_id"),
             "atributos_generales": data.get("atributos_generales", []),
             "variantes": data["variantes"],
             "seo": data.get("seo", {}),

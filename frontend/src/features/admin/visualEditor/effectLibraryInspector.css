@@ -184,3 +184,39 @@
   outline: 2px solid #365dce;
   outline-offset: 2px;
 }
+
+/* OPENMIND_ONLINE_EFFECTS_V1: corregir las tarjetas ilegibles y buscar en fuente externa. */
+.ve-hover-panel .om-online-library__list {
+ display:grid;grid-template-columns:minmax(0,1fr);gap:9px;max-height:320px;overflow:auto;padding:4px 2px;
+}
+.ve-hover-panel .om-online-library__list > button {
+ position:static !important;display:flex !important; flex-direction:column !important;align-items:stretch !important;
+ justify-content:center !important; width:100% !important;min-width:0 !important;height:auto !important;
+ min-height:68px !important; max-height:none !important;overflow:visible !important;
+ padding:12px !important; margin:0 !important;gap:5px !important;text-align:left !important;
+ white-space:normal !important;line-height:1.4 !important;border-radius:10px;
+}
+.ve-hover-panel .om-online-library__list > button strong,
+.ve-hover-panel .om-online-library__list > button span {
+ position:static !important;display:block !important;margin:0 !important;
+ height:auto !important; min-height:0 !important;max-height:none !important;
+ line-height:1.45 !important;white-space:normal !important;overflow-wrap:break-word !important;
+}
+.ve-hover-panel .om-online-library__list > button strong{font-size:12px !important;font-weight:700}
+.ve-hover-panel .om-online-library__list > button span{font-size:11px !important;color:#53647e}
+.ve-hover-panel .om-online-library__credit{font-size:11px;line-height:1.5;color:#526178;margin:0}
+.ve-hover-panel .om-online-library__credit a{color:#2856b5;text-decoration:underline}
+.ve-hover-panel .om-online-library__active{font-size:12px;color:#3159a8;padding:6px 0}
+.ve-hover-panel .ve-effect-library__sample-art:hover,
+.ve-hover-panel .ve-effect-library__sample:focus-visible .ve-effect-library__sample-art{
+ animation:var(--om-online-sample-animation,none);
+}
+@media (prefers-reduced-motion:reduce){
+ .ve-hover-panel .ve-effect-library__sample-art{animation:none !important}
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ve-hover-panel .ve-effect-library__sample:is(:hover,:focus-visible)::after {
+    opacity: var(--ve-sample-overlay-opacity, 0);
+  }
+}

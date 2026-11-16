@@ -1,9 +1,16 @@
+﻿from apps.landing.campaigns import CampaignAudienceView, CampaignsView
 
 from apps.core.presentation.customer_orders import CustomerOrdersAPIView
+from apps.landing.campaign_delivery import CampaignActionView, CampaignUnsubscribeView
+from apps.core.presentation.pago_pedido_pendiente import PagarPedidoPendienteView
 from apps.core.presentation.order_tracking import OrderTrackingAPIView
 from apps.core.presentation.checkout import CheckoutOrderAPIView
 from apps.core.presentation.shipping import ShippingQuoteAPIView
 from apps.core.presentation.linkify_notificacion import LinkifyNotificacionView
+from apps.core.presentation.tuu_callback import TuuCallbackView
+from apps.core.presentation.pagos_externos import (
+    CapturarPagoPayPalView, ConfirmarPagoMercadoPagoView, IniciarPagoMercadoPagoView, IniciarPagoPayPalView,
+)
 from apps.core.presentation.legal import (
     ConfiguracionLegalAPIView,
     ConsultaVersionVigenteAPIView,
@@ -20,12 +27,24 @@ from apps.core.presentation.commercial_exports import (InformeXLSXAPIView, Pedid
 from apps.core.presentation.dashboard import DashboardAPIView
 from apps.core.presentation.reports import InformeAPIView, InformePDFAPIView
 from apps.core.presentation.store_configuration import InformacionTiendaAPIView
-from apps.core.presentation.plantillas_correo import PlantillasCorreoAPIView
+from apps.core.presentation.plantillas_correo import (
+    PlantillasCorreoAPIView,
+    EnviarCorreoManualPedidoAPIView,
+    ProbarCorreoEventoAPIView,
+)
 from apps.core.presentation.pickup_address import PickupAddressAPIView
 from apps.core.presentation.promotions import PromocionesAPIView, PromocionDetalleAPIView, ValidarPromocionAPIView
 from django.urls import path
 from apps.core.presentation.images import ProcessImageAPIView
-from apps.core.presentation.consent import ConsentRequestView, ConsentActionView
+from apps.core.presentation.consent import ConsentRequestView, ConsentActionView, OwnConsentView
+from apps.core.presentation.gmail_oauth_views import (
+    GmailGoogleEstadoView,
+    GmailGoogleIniciarView,
+    GmailGoogleCallbackView,
+    GmailGoogleDesconectarView,
+    GmailGooglePruebaView,
+    gmail_google_resultado,
+)
 from . import views
 from apps.core.presentation.views import (
     ConfiguracionPagoAPIView,
@@ -34,8 +53,6 @@ from apps.core.presentation.views import (
     MetodosPagoActivosAPIView,
     RegistrarCompraView,
     TiendaPagoActualAPIView,
-    IniciarPagoPayPalView,
-    CapturarPagoPayPalView,
     WebhookLinkifyAPIView,
     VerificarTransferenciaLinkifyAPIView,
     TransferenciasPendientesAPIView,
@@ -45,9 +62,27 @@ from apps.core.presentation.views import (
 )
 
 urlpatterns = [
+    path('tienda/correo/google/prueba/', GmailGooglePruebaView.as_view(), name='gmail-google-prueba'),
+    path("tienda/correo/google/estado/", GmailGoogleEstadoView.as_view(), name="gmail-google-estado"),
+    path("tienda/correo/google/iniciar/", GmailGoogleIniciarView.as_view(), name="gmail-google-iniciar"),
+    path("tienda/correo/google/callback/", GmailGoogleCallbackView.as_view(), name="gmail-google-callback"),
+    path("tienda/correo/google/desconectar/", GmailGoogleDesconectarView.as_view(), name="gmail-google-desconectar"),
+    path("tienda/correo/google/resultado/", gmail_google_resultado, name="gmail-google-resultado"),
+    path('tienda/campanas/destinatarios/', CampaignAudienceView.as_view(), name='campanas-destinatarios'),
+    path('tienda/campanas/baja/', CampaignUnsubscribeView.as_view(), name='campanas-baja'),
+    path('tienda/campanas/<uuid:pk>/vista-previa/', CampaignActionView.as_view(action='preview'), name='campana-preview'),
+    path('tienda/campanas/<uuid:pk>/historial/', CampaignActionView.as_view(action='history'), name='campana-history'),
+    path('tienda/campanas/<uuid:pk>/prueba/', CampaignActionView.as_view(action='test'), name='campana-test'),
+    path('tienda/campanas/<uuid:pk>/enviar/', CampaignActionView.as_view(action='confirm'), name='campana-confirm'),
+    path('tienda/campanas/<uuid:pk>/procesar/', CampaignActionView.as_view(action='process'), name='campana-process'),
+    path('tienda/campanas/<uuid:pk>/reintentar/', CampaignActionView.as_view(action='retry'), name='campana-retry'),
+    path('tienda/campanas/<uuid:pk>/cancelar/', CampaignActionView.as_view(action='cancel'), name='campana-cancel'),
+    path('tienda/campanas/', CampaignsView.as_view(), name='campanas'),
+    path('tienda/campanas/<uuid:pk>/', CampaignsView.as_view(), name='campana-detalle'),
     path('tienda/imagenes/procesar/', ProcessImageAPIView.as_view(), name='store-process-image'),
     path('consentimiento/solicitar/', ConsentRequestView.as_view(), name='consent-request'),
     path('consentimiento/enlace/', ConsentActionView.as_view(), name='consent-link'),
+    path('consentimiento/mi-preferencia/', OwnConsentView.as_view(), name='consent-own'),
     path('tienda/informes/', InformeAPIView.as_view(), name='tienda-informes'),
     path('tienda/informes/pdf/', InformePDFAPIView.as_view(), name='tienda-informes-pdf'),
     path('tienda/informes/xlsx/', InformeXLSXAPIView.as_view(), name='tienda-informes-xlsx'),
@@ -58,6 +93,8 @@ urlpatterns = [
     path('tienda/contactos/exportar/', ContactosExportAPIView.as_view(), name='tienda-contactos-exportar'),
     path('tienda/configuracion/', InformacionTiendaAPIView.as_view(), name='tienda-configuracion'),
     path('tienda/correos/', PlantillasCorreoAPIView.as_view(), name='tienda-correos'),
+    path('tienda/correos/enviar-manual/', ProbarCorreoEventoAPIView.as_view(), name='tienda-correos-enviar-manual'),
+    path('tienda/pedidos/<int:id_pedido>/enviar-correo/', EnviarCorreoManualPedidoAPIView.as_view(), name='tienda-pedido-enviar-correo'),
     path('promociones/', PromocionesAPIView.as_view(), name='promotions'),
     path('promociones/validar/', ValidarPromocionAPIView.as_view(), name='promotion-validate'),
     path('promociones/<int:promotion_id>/', PromocionDetalleAPIView.as_view(), name='promotion-detail'),
@@ -77,9 +114,13 @@ urlpatterns = [
     path('entregas/alternativas/', AlternativasEntregaAPIView.as_view(), name='entregas-alternativas'),
     path('entregas/cotizacion/', ShippingQuoteAPIView.as_view(), name='entregas-cotizacion'),
     path('pagos/activos/', MetodosPagoActivosAPIView.as_view(), name='pagos-activos'),
+    path('pagos/pedido/pagar/', PagarPedidoPendienteView.as_view(), name='pagar-pedido-pendiente'),
     path('pagos/paypal/iniciar/', IniciarPagoPayPalView.as_view(), name='paypal_iniciar'),
     path('pagos/paypal/capturar/', CapturarPagoPayPalView.as_view(), name='paypal_capturar'),
+    path('pagos/mercadopago/iniciar/', IniciarPagoMercadoPagoView.as_view(), name='mercadopago_iniciar'),
+    path('pagos/mercadopago/confirmar/', ConfirmarPagoMercadoPagoView.as_view(), name='mercadopago_confirmar'),
     path('pagos/linkify/notificacion/', LinkifyNotificacionView.as_view(), name='linkify_notificacion'),
+    path('pagos/tuu/callback/', TuuCallbackView.as_view(), name='tuu_callback'),
     path('pagos/linkify/webhook/', WebhookLinkifyAPIView.as_view(), name='linkify_webhook'),
     path('pagos/linkify/verificar/', VerificarTransferenciaLinkifyAPIView.as_view(), name='linkify_verificar'),
     path('pagos/transferencias/pendientes/', TransferenciasPendientesAPIView.as_view(), name='transferencias-pendientes'),

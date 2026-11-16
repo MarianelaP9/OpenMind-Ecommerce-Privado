@@ -6,6 +6,7 @@ import { MinimalSidebar } from './MinimalSidebar';
 import { MinimalHeader } from './MinimalHeader';
 import { MinimalFooter } from './MinimalFooter';
 import { StoreVisualRoot } from '../StoreVisualRoot';
+import './minimalLandingPolish.css';
 
 export function MinimalLayout() {
   const { pathname, search } = useLocation();
@@ -18,7 +19,7 @@ export function MinimalLayout() {
     <StoreVisualRoot className="template-minimal min-h-screen bg-[#f5f5f3]">
       <MinimalSidebar />
 
-      <div className="md:pl-16 min-h-screen flex flex-col">
+      <div className="md:pl-20 min-h-screen flex flex-col">
         <MinimalHeader />
 
         <main id="main-content" tabIndex={-1} className="flex-1">

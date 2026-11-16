@@ -91,7 +91,7 @@ class ArchivoMultimedia(models.Model):
 
 
 class RecursoMultimedia(models.Model):
-    TIPOS = [(name, name) for name in ('imagen', 'youtube', 'instagram', 'facebook', 'enlace')]
+    TIPOS = [(name, name) for name in ('imagen', 'video', 'youtube', 'instagram', 'facebook', 'enlace')]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     tienda = models.ForeignKey('core.Tienda', on_delete=models.CASCADE)
     titulo = models.CharField(max_length=180)
@@ -142,3 +142,90 @@ class SolicitudActividad(models.Model):
             models.CheckConstraint(condition=(models.Q(tipo='consulta', estado__in=['nueva', 'en_revision', 'respondida', 'cerrada']) | models.Q(tipo='inscripcion', estado__in=['pendiente', 'confirmada', 'cancelada'])), name='actividad_estado_tipo_valido'),
         ]
         indexes = [models.Index(fields=['tienda', 'tipo', 'seccion_id', 'estado'], name='actividad_gestion_tienda')]
+
+
+class RespuestaActividad(models.Model):
+    ESTADOS = [(value, value) for value in ('borrador', 'enviando', 'aceptada', 'fallida', 'indeterminada')]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    solicitud = models.ForeignKey(SolicitudActividad, on_delete=models.PROTECT, related_name='respuestas')
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    clave = models.UUIDField()
+    destinatario = models.EmailField()
+    asunto = models.CharField(max_length=200)
+    cuerpo = models.TextField()
+    estado = models.CharField(max_length=15, choices=ESTADOS, default='borrador')
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-creado', '-id']
+        constraints = [models.UniqueConstraint(fields=['solicitud', 'clave'], name='respuesta_actividad_clave_unica')]
+
+
+class IntentoRespuestaActividad(models.Model):
+    respuesta = models.ForeignKey(RespuestaActividad, on_delete=models.PROTECT, related_name='intentos')
+    numero = models.PositiveSmallIntegerField()
+    estado = models.CharField(max_length=15, default='enviando')
+    codigo = models.CharField(max_length=60, blank=True, default='')
+    creado = models.DateTimeField(auto_now_add=True)
+    finalizado = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['numero']
+        constraints = [models.UniqueConstraint(fields=['respuesta', 'numero'], name='intento_respuesta_numero_unico')]
+
+
+class CampanaPromocional(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tienda = models.ForeignKey('core.Tienda', on_delete=models.PROTECT)
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    clave = models.UUIDField()
+    nombre = models.CharField(max_length=150)
+    asunto = models.CharField(max_length=200)
+    cuerpo = models.TextField()
+    producto = models.JSONField(default=dict)
+    revision = models.PositiveIntegerField(default=1)
+    estado = models.CharField(max_length=15, default='borrador', choices=[(s, s) for s in ('borrador', 'pendiente', 'procesando', 'aceptada', 'parcial', 'fallida', 'cancelada')])
+    diseno = models.JSONField(default=dict, blank=True)
+    confirmada_en = models.DateTimeField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-actualizado', '-id']
+        constraints = [models.UniqueConstraint(fields=['tienda', 'clave'], name='campana_tienda_clave_unica')]
+
+
+class DestinatarioCampana(models.Model):
+    campana = models.ForeignKey(CampanaPromocional, on_delete=models.CASCADE, related_name='destinatarios')
+    consentimiento = models.ForeignKey('core.ConsentimientoComercial', on_delete=models.PROTECT)
+    revision_consentimiento = models.PositiveIntegerField()
+    email = models.EmailField(max_length=320)
+    estado = models.CharField(max_length=15, default='seleccionado', choices=[(s, s) for s in ('seleccionado', 'excluido', 'pendiente', 'procesando', 'aceptada', 'fallida', 'indeterminada', 'cancelada')])
+    intentos = models.PositiveIntegerField(default=0)
+    ultimo_error = models.CharField(max_length=60, blank=True, default='')
+    finalizado = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['email']
+        constraints = [models.UniqueConstraint(fields=['campana', 'email'], name='campana_email_unico')]
+
+
+class EnvioCorreoTienda(models.Model):
+    """Reserva durable antes del transporte. Un resultado incierto nunca se reenvía automáticamente."""
+    tienda = models.ForeignKey('core.Tienda', on_delete=models.PROTECT)
+    clave = models.UUIDField()
+    categoria = models.CharField(max_length=20)
+    referencia = models.UUIDField(null=True, blank=True)
+    huella = models.CharField(max_length=64, blank=True, default='')
+    destinatario = models.EmailField(max_length=320)
+    proveedor = models.CharField(max_length=15)
+    cuenta_hash = models.CharField(max_length=64)
+    estado = models.CharField(max_length=15, default='procesando')
+    codigo = models.CharField(max_length=60, blank=True, default='')
+    creado = models.DateTimeField(auto_now_add=True)
+    finalizado = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['tienda', 'clave'], name='envio_tienda_clave_unica')]
+        indexes = [models.Index(fields=['tienda', 'creado'], name='envio_tienda_fecha')]

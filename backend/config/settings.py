@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'apps.authentication',
     'apps.catalog',
     'apps.landing',
+    'apps.instagram',
     'apps.visual_config',
     'apps.shipping',
 ]
@@ -69,6 +70,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.authentication.infrastructure.cookie_auth.SessionInactivityMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -108,9 +110,11 @@ DATABASES = {
 }
 
 
-# RNF-03: preferir Argon2 para contraseñas nuevas y conservar verificación de hashes históricos PBKDF2.
+# RNF-03: preferir Argon2id (con salt aleatorio único por usuario) para contraseñas nuevas
+# y conservar verificación de hashes BCrypt y PBKDF2 históricos.
 PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
 ]
@@ -119,9 +123,6 @@ PASSWORD_HASHERS = [
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
     },
@@ -155,15 +156,37 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 _cors_default = 'http://localhost:5173,http://127.0.0.1:5173' if DEBUG else ''
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv('DJANGO_CORS_ALLOWED_ORIGINS', _cors_default).split(',') if origin.strip()]
+CORS_ALLOW_CREDENTIALS = True
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'x-require-captcha',
+]
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if origin.strip()]
+
+# Configuración obligatoria de cookies seguras y sesión según perfil de usuario:
+# - Cuentas administrativas (is_staff / admin): 30 minutos de inactividad (1800s).
+# - Clientes finales: expiración prolongada (7 a 30 días, default 30 días = 2592000s) sin cierre por inactividad corta.
+SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = os.getenv('DJANGO_SESSION_COOKIE_SAMESITE', 'Lax')
+ADMIN_SESSION_INACTIVITY_TIMEOUT_SECONDS = int(os.getenv('ADMIN_SESSION_INACTIVITY_TIMEOUT_SECONDS', '1800'))
+ADMIN_SESSION_COOKIE_AGE = int(os.getenv('DJANGO_ADMIN_SESSION_COOKIE_AGE', '1800'))  # 30 minutos
+CUSTOMER_SESSION_COOKIE_AGE = int(os.getenv('DJANGO_CUSTOMER_SESSION_COOKIE_AGE', str(30 * 86400)))  # 30 días
+SESSION_COOKIE_AGE = ADMIN_SESSION_COOKIE_AGE
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = os.getenv('DJANGO_CSRF_COOKIE_SAMESITE', 'Lax')
+
 SECURE_SSL_REDIRECT = os.getenv('DJANGO_SECURE_SSL_REDIRECT', '0') == '1'
 SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', '0'))
 
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'apps.authentication.infrastructure.cookie_auth.ActiveSessionTokenAuthentication',
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
@@ -186,16 +209,85 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 16 * 1024 * 1024
 # Correo transaccional (SCRUM-423). Sin configurar, los correos se imprimen en el log del backend
 # (docker compose logs backend). Para enviarlos de verdad: EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 # y los datos del servidor SMTP en las variables EMAIL_*. Ver docs/correo-despacho.md.
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND') or 'django.core.mail.backends.console.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST') or 'localhost'
-EMAIL_PORT = int(os.getenv('EMAIL_PORT') or 587)
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER') or ''
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD') or ''
-EMAIL_USE_SSL = (os.getenv('EMAIL_USE_SSL') or '0') == '1'
-EMAIL_USE_TLS = (os.getenv('EMAIL_USE_TLS') or '1') == '1' and not EMAIL_USE_SSL
-EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT') or 10)
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or 'Tienda <no-reply@tienda.local>'
+# Configuración de Correo Transaccional
 
-# Dirección pública de la tienda, base de los enlaces de los correos (SCRUM-434). El enlace de seguimiento queda
-# <STOREFRONT_PUBLIC_URL>/seguimiento?orden=ORD-...; en producción hay que poner la dirección real de la tienda.
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', '').strip() or 'django.core.mail.backends.smtp.EmailBackend'
+
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
+
+_email_port = os.getenv('EMAIL_PORT', '').strip()
+EMAIL_PORT = int(_email_port) if _email_port.isdigit() else 587
+
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+
+# Conversión estricta a booleano
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', '1') in ('1', 'True', 'true', True)
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', '0') in ('1', 'True', 'true', True)
+
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+EMAIL_TIMEOUT = 10  # Timeout en segundos para no colgar el worker si hay microcortes
+
+
+
+
+# ==============================================================================
+# NOTA PARA EQUIPO DE DESPLIEGUE / DEVOPS: CONFIGURACIÓN HTTPS & TLS 1.2+
+# ==============================================================================
+# Este backend está preparado para operar detrás de un proxy inverso o balanceador
+# con terminación SSL/TLS (Nginx, Traefik, AWS ALB, Cloudflare, etc.).
+#
+# REQUERIMIENTOS DE INFRASTRUCTURE AL DESPLEGAR EN PRODUCCIÓN:
+# 1. Configurar la terminación HTTPS en el servidor/proxy con TLS 1.2 o superior.
+# 2. Asegurarse de que el proxy envíe la cabecera: X-Forwarded-Proto: https
+# 3. Establecer la variable de entorno DEBUG=False en el contenedor backend.
+# ==============================================================================
+
+
+
+# Le indica a Django que si el proxy web envía este header, la conexión original fue HTTPS
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Obliga a redirigir tráfico no seguro a HTTPS (solo en producción)
+SECURE_SSL_REDIRECT = not DEBUG
+# Solo viajarán si la conexión es HTTPS (se puede condicionar con una variable DEBUG=False)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+
+# Dirección pública de la tienda, base de los enlaces de los correos (SCRUM-434).
+PAYPAL_FX_MARGEN_PCT = os.getenv('PAYPAL_FX_MARGEN_PCT', '2').strip() or '2'
+PAYPAL_FX_MAX_EDAD_HORAS = float(os.getenv('PAYPAL_FX_MAX_EDAD_HORAS') or 96)
+PAYPAL_FX_REFRESCO_HORAS = float(os.getenv('PAYPAL_FX_REFRESCO_HORAS') or 6)
+BCCH_TOKEN = (os.getenv('BCCH_TOKEN') or '').strip()
 STOREFRONT_PUBLIC_URL = (os.getenv('STOREFRONT_PUBLIC_URL') or 'http://localhost:5173/plantilla/1').rstrip('/')
+if not os.getenv('COMMERCIAL_CONSENT_FRONTEND_ORIGIN'):
+    from urllib.parse import urlsplit
+    _consent_origin = urlsplit(STOREFRONT_PUBLIC_URL)
+    COMMERCIAL_CONSENT_FRONTEND_ORIGIN = f'{_consent_origin.scheme}://{_consent_origin.netloc}'
+TUU_CALLBACK_BASE_URL = (os.getenv('TUU_CALLBACK_BASE_URL') or '').rstrip('/')
+
+# Solo habilita respuestas capturadas por Mailpit; no autoriza SMTP real.
+ACTIVITY_REPLIES_MAILPIT_ENABLED = os.getenv("ACTIVITY_REPLIES_MAILPIT_ENABLED", "0") == "1"
+GOOGLE_OAUTH_CLIENT_ID = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip()
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '').strip()
+GOOGLE_OAUTH_REDIRECT_URI = os.getenv('GOOGLE_OAUTH_REDIRECT_URI', '').strip()
+
+# SCRUM-522: Mailpit está permitido; Gmail real requiere habilitación expresa.
+STORE_MAIL_EXTERNAL_ENABLED = os.getenv('STORE_MAIL_EXTERNAL_ENABLED', '0') == '1'
+STORE_MAIL_TRANSPORT = os.getenv('STORE_MAIL_TRANSPORT', 'auto').strip().lower()
+STORE_MAIL_HOURLY_LIMIT = max(1, int(os.getenv('STORE_MAIL_HOURLY_LIMIT', '100')))
+STORE_MAIL_DAILY_LIMIT = max(1, int(os.getenv('STORE_MAIL_DAILY_LIMIT', '500')))
+STORE_MAIL_PROVIDER_DAILY_LIMIT = max(1, int(os.getenv('STORE_MAIL_PROVIDER_DAILY_LIMIT', '500')))
+STORE_MAIL_PUBLIC_API_URL = os.getenv('STORE_MAIL_PUBLIC_API_URL', 'http://localhost:8000').rstrip('/')
+
+# Instagram Unified Login: independiente de Gmail. Publicar requiere autorización operativa expresa.
+INSTAGRAM_APP_ID = os.getenv('META_APP_ID', '').strip()
+INSTAGRAM_APP_SECRET = os.getenv('META_APP_SECRET', '').strip()
+INSTAGRAM_CONFIG_ID = os.getenv('META_CONFIG_ID', '').strip()
+INSTAGRAM_REDIRECT_URI = os.getenv('INSTAGRAM_REDIRECT_URI', '').strip()
+INSTAGRAM_FRONTEND_ORIGIN = os.getenv('INSTAGRAM_FRONTEND_ORIGIN', '').rstrip('/')
+INSTAGRAM_MEDIA_PUBLIC_ORIGIN = os.getenv('INSTAGRAM_MEDIA_PUBLIC_ORIGIN', '').rstrip('/')
+INSTAGRAM_TOKEN_ENCRYPTION_KEY = os.getenv('INSTAGRAM_TOKEN_ENCRYPTION_KEY', '').strip()
+INSTAGRAM_API_VERSION = os.getenv('INSTAGRAM_API_VERSION', 'v27.0').strip()
+INSTAGRAM_PUBLISHING_ENABLED = os.getenv('INSTAGRAM_PUBLISHING_ENABLED', '0') == '1'
+INSTAGRAM_DAILY_LIMIT = max(1, min(100, int(os.getenv('INSTAGRAM_DAILY_LIMIT', '20'))))

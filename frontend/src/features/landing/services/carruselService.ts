@@ -19,6 +19,29 @@ const ENDPOINT = `${API_BASE_URL}/api/landing/carrusel/`;
 export const MAX_IMAGENES_CARRUSEL = 8;
 export const MAX_MB_CARRUSEL = 2;
 
+export type CarouselTextMode = 'unico' | 'por_imagen';
+
+export async function fetchCarouselTextMode(): Promise<CarouselTextMode> {
+  const response = await requestJson(`${ENDPOINT}modo-texto/`, {
+    method: 'GET', headers: authHeaders(), cache: 'no-store',
+  }) as { modo?: string };
+  if (response?.modo !== 'unico' && response?.modo !== 'por_imagen') {
+    throw new Error('No pudimos confirmar el modo de texto de la portada.');
+  }
+  return response.modo;
+}
+
+export async function saveCarouselTextMode(modo: CarouselTextMode): Promise<CarouselTextMode> {
+  const response = await requestJson(`${ENDPOINT}modo-texto/`, {
+    method: 'PATCH',
+    headers: {...authHeaders(), 'Content-Type': 'application/json'},
+    body: JSON.stringify({ modo }),
+  }) as { modo?: string };
+  if (response?.modo !== modo) throw new Error('No pudimos confirmar el modo guardado.');
+  notifyCarouselChanged();
+  return modo;
+}
+
 const MAX_TEXTO_ALTERNATIVO = 250;
 
 function authHeaders(): Record<string, string> {
@@ -228,4 +251,16 @@ export async function deleteCarouselImage(
   );
 
   notifyCarouselChanged();
+}
+
+
+export async function saveCarouselContent(id: string, contenido: import('../types/landing.types').CarouselSlideContent): Promise<ImagenCarruselLanding> {
+  const saved = await requestJson(`${ENDPOINT}${encodeURIComponent(id)}/`, {method:'PATCH',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({contenido})});
+  if (!saved || typeof saved !== 'object' || (saved as ImagenCarruselLanding).id !== id) throw new Error('No pudimos confirmar el contenido guardado.');
+  notifyCarouselChanged(); return normalizeImage(saved as ImagenCarruselLanding);
+}
+export async function addCarouselResource(recurso_id: string): Promise<ImagenCarruselLanding> {
+  const saved = await requestJson(ENDPOINT,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({recurso_id})});
+  if (!saved || typeof saved !== 'object' || typeof (saved as ImagenCarruselLanding).id !== 'string') throw new Error('No pudimos confirmar el recurso agregado.');
+  notifyCarouselChanged(); return normalizeImage(saved as ImagenCarruselLanding);
 }

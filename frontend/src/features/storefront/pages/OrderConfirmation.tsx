@@ -4,9 +4,10 @@ import {
   useLocation,
 } from 'react-router-dom';
 
-import { Button, Icon } from '../components/ui';
+import { Icon } from '../components/ui';
 import { useStorefrontTemplate } from '../hooks/useStorefrontTemplate';
 import TransbankReturnResult from './TransbankReturnResult';
+import ExternalPaymentReturnResult from './ExternalPaymentReturnResult';
 import type { CreatedOrder } from '../services/orderService';
 import { isStorefrontEditorPreview } from '../visual/pages';
 
@@ -34,6 +35,19 @@ export default function OrderConfirmation() {
         tokenWs={tokenWs}
         tbkToken={tbkToken}
         tiendaId={Number(query.get('tienda')) || 1}
+      />
+    );
+  }
+
+  // Retorno desde PayPal (?token=) o Mercado Pago (?payment_id=): el servidor confirma el pago.
+  const gateway = query.get('gateway');
+  if (gateway === 'paypal' || gateway === 'mercadopago') {
+    return (
+      <ExternalPaymentReturnResult
+        gateway={gateway}
+        orderNumber={query.get('orderNumber') ?? ''}
+        tiendaId={Number(query.get('tienda')) || 1}
+        reference={query.get('cancelado') === '1' ? '' : (gateway === 'paypal' ? query.get('token') : query.get('payment_id')) ?? ''}
       />
     );
   }
@@ -247,18 +261,18 @@ export default function OrderConfirmation() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full mt-6">
               <Link data-page-action="primary"
                 to={trackingRoute}
                 state={{ email: state.email ?? '' }}
-                className="h-12 rounded-[8px] bg-[var(--visual-page-panel-background)] text-[var(--visual-page-color)] text-[12px] font-semibold flex items-center justify-center hover:opacity-80 transition-opacity"
+                className="min-h-[48px] px-6 py-3 rounded-[8px] bg-[var(--visual-page-panel-background)] text-[var(--visual-page-color)] text-[12px] font-semibold flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
               >
                 Ver mi pedido
               </Link>
 
-              <Link data-page-action="primary"
+              <Link data-page-action="outline"
                 to={route('catalogo')}
-                className="h-12 rounded-[8px] bg-[var(--visual-page-panel-background)] border border-[var(--visual-global-border)] text-[var(--visual-page-color)] text-[12px] font-semibold flex items-center justify-center hover:bg-[var(--visual-page-panel-background)] hover:text-[var(--visual-page-color)] transition-colors"
+                className="min-h-[48px] px-6 py-3 rounded-[8px] bg-[var(--visual-page-panel-background)] border border-[var(--visual-global-border)] text-[var(--visual-page-color)] text-[12px] font-semibold flex items-center justify-center gap-2 hover:bg-[var(--visual-page-panel-background)] hover:text-[var(--visual-page-color)] transition-colors"
               >
                 Seguir comprando
               </Link>
@@ -477,30 +491,22 @@ export default function OrderConfirmation() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 w-full">
-        <Link data-page-action="ghost"
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full mt-2">
+        <Link
+          data-page-action="primary"
           to={trackingRoute}
           state={{ email: state.email ?? '' }}
-          className="flex-1"
+          className="min-h-[48px] px-6 py-3 rounded-xl bg-[var(--primary)] text-[var(--on-primary)] text-sm font-semibold inline-flex items-center justify-center gap-2 shadow-sm transition-all hover:brightness-95"
         >
-          <Button
-            variant="primary"
-            fullWidth
-          >
-            Ver mi pedido
-          </Button>
+          Ver mi pedido
         </Link>
 
-        <Link data-page-action="ghost"
+        <Link
+          data-page-action="outline"
           to={route('catalogo')}
-          className="flex-1"
+          className="min-h-[48px] px-6 py-3 rounded-xl border border-[var(--border)] bg-[var(--visual-page-field-background,white)] text-[var(--foreground)] text-sm font-semibold inline-flex items-center justify-center gap-2 shadow-sm transition-all hover:bg-[var(--muted)]"
         >
-          <Button
-            variant="outline"
-            fullWidth
-          >
-            Seguir comprando
-          </Button>
+          Seguir comprando
         </Link>
       </div>
     </div>

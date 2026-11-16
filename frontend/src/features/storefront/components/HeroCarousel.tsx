@@ -1,12 +1,19 @@
+// OPENMIND_TEMPLATE_GALLERY_LAYOUT_FIX_V1
 import { useEffect, useRef, useState } from 'react';
-import type { LandingConfig } from '../../landing/types/landing.types';
+import { isActiveTemplateThumbnailPreview } from '../visual/pages'; // miniaturas: vista estable
+import type { CarouselSlideContent, LandingConfig } from '../../landing/types/landing.types';
 import './hero-carousel.css';
-import { CAROUSEL_TRANSITIONS, type CarouselTransitionId } from '../visual/carouselTransitionLibrary';
+// Animaciones oficiales disponibles también en la tienda pública, sin fetch en cada visita.
 
-type HeroSlide = { id: string; src: string; alt: string };
-type HeroCarouselProps = { landing?: LandingConfig | null; intervalMs?: number };
+import { CAROUSEL_TRANSITIONS, type CarouselTransitionId } from '../visual/carouselTransitionLibrary';
+import { isOnlineEffectId, type OnlineEffectId } from '../visual/onlineEffects';
+// OPENMIND_PUBLIC_CAROUSEL_PLAYBACK_FIX_V1
+// OPENMIND_ONLINE_EFFECTS_V1
+
+type HeroSlide = { id: string; src: string; alt: string; tipo?: 'imagen' | 'video'; content?: CarouselSlideContent };
+type HeroCarouselProps = { landing?: LandingConfig | null; intervalMs?: number; onContentChange?: (content: CarouselSlideContent) => void };
 type CarouselMode = 'static' | 'manual' | 'automatic';
-type CarouselTransition = CarouselTransitionId;
+type CarouselTransition = CarouselTransitionId | OnlineEffectId;
 
 type CarouselSettings = {
   mode: CarouselMode;
@@ -17,7 +24,7 @@ type CarouselSettings = {
 
 const DEFAULT_SETTINGS: CarouselSettings = {
   mode: 'automatic',
-  interval: 10,
+  interval: 5,
   transition: 'fade',
   indicators: true,
 };
@@ -32,6 +39,7 @@ function getHeroSlides(landing?: LandingConfig | null): HeroSlide[] {
   if (images.length > 0) {
     return images.map(image => ({
       id: image.id,
+      tipo: image.tipo, content: image.contenido,
       src: image.archivo,
       alt: image.texto_alternativo || '',
     }));
@@ -55,7 +63,7 @@ export function hasHeroSlides(landing?: LandingConfig | null): boolean {
   );
 }
 
-function getSettings(element: HTMLElement): CarouselSettings {
+function getSettings(element: HTMLElement, fallbackMs?: number): CarouselSettings {
   const style = window.getComputedStyle(element);
   const read = (name: string) => style.getPropertyValue(name).trim();
   const mode = read('--openmind-carousel-mode');
@@ -65,34 +73,58 @@ function getSettings(element: HTMLElement): CarouselSettings {
 
   return {
     mode: mode === 'static' || mode === 'manual' ? mode : 'automatic',
-    interval: [5, 10, 20].includes(seconds) ? seconds : DEFAULT_SETTINGS.interval,
-    transition: VALID_TRANSITIONS.includes(transition)
+    interval: Number.isInteger(seconds) && seconds >= 2 && seconds <= 20
+      ? seconds
+      : fallbackMs != null && Number.isFinite(fallbackMs)
+        ? Math.max(2, Math.min(20, Math.round(fallbackMs / 1000)))
+        : DEFAULT_SETTINGS.interval,
+    transition: (VALID_TRANSITIONS.includes(transition) || isOnlineEffectId(transition))
       ? transition as CarouselTransition
       : DEFAULT_SETTINGS.transition,
     indicators: indicators === '' ? DEFAULT_SETTINGS.indicators : indicators !== '0',
   };
 }
 
-export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
+export function HeroCarousel({ landing, intervalMs, onContentChange }: HeroCarouselProps) {
+  const thumbnailPreview = isActiveTemplateThumbnailPreview();
   const hostRef = useRef<HTMLDivElement>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const previousSlide = useRef<HeroSlide | null>(null);
   const [outgoing, setOutgoing] = useState<HeroSlide | null>(null);
   const [settings, setSettings] = useState<CarouselSettings>(DEFAULT_SETTINGS);
   const [activeIndex, setActiveIndex] = useState(0);
   const [manualPaused, setManualPaused] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
 
   const slides = getHeroSlides(landing);
   const count = slides.length;
-  const currentIndex = count > 0 && settings.mode !== 'static'
+  const currentIndex = count > 0 && !thumbnailPreview && settings.mode !== 'static'
     ? activeIndex % count
     : 0;
   const active = slides[currentIndex];
-  const showDots = count > 1 && settings.mode !== 'static' &&
+  const nextImageSource = count > 1 && !thumbnailPreview && settings.mode === 'automatic'
+    ? (slides[(currentIndex + 1) % count]?.tipo === 'video' ? undefined : slides[(currentIndex + 1) % count]?.src)
+    : undefined;
+
+  const contentKey = JSON.stringify(active?.content ?? {});
+  useEffect(() => { onContentChange?.(active?.content ?? {}); }, [active?.id, contentKey, onContentChange]);
+  useEffect(() => {
+    const video = videoRef.current; if (!video) return;
+    if (!thumbnailPreview && settings.mode === 'automatic' && !manualPaused && !reducedMotion && pageVisible) void video.play().catch(() => undefined);
+    else video.pause();
+    return () => video.pause();
+  }, [active?.id, settings.mode, manualPaused, reducedMotion, pageVisible]);
+  useEffect(() => {
+    if (!nextImageSource) return;
+    const preload = new Image();
+    preload.src = nextImageSource;
+  }, [nextImageSource]);
+  const showDots = !thumbnailPreview && count > 1 && settings.mode !== 'static' &&
     (settings.mode === 'manual' || settings.indicators);
+  // Pausa explícita para accesibilidad, incluso con indicadores ocultos.
+  const showControls = !thumbnailPreview && (showDots || (count > 1 && settings.mode === 'automatic'));
 
   // Configuración compartida entre tienda pública y vista previa del editor.
   useEffect(() => {
@@ -100,7 +132,7 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
     if (!node) return;
     const doc = node.ownerDocument;
     const sync = () => {
-      const next = getSettings(node);
+      const next = getSettings(node, intervalMs);
       setSettings(previous =>
         previous.mode === next.mode &&
         previous.interval === next.interval &&
@@ -119,7 +151,7 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
       observer.disconnect();
       doc.defaultView?.removeEventListener('openmind:carousel:sync', sync);
     };
-  }, []);
+  }, [intervalMs]);
 
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -141,15 +173,16 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
   }, [settings.mode]);
 
   useEffect(() => {
-    if (count <= 1 || settings.mode !== 'automatic' || manualPaused || hovered ||
-      focused || reducedMotion || !pageVisible) return;
-    const milliseconds = intervalMs ?? settings.interval * 1000;
-    const timer = window.setInterval(() => {
+    if (count <= 1 || thumbnailPreview || settings.mode !== 'automatic' || manualPaused ||
+      reducedMotion || !pageVisible) return;
+    // Un solo temporizador por fotografía: respeta 2–20 s, y se reinicia
+    // después de escoger un indicador sin desactivar la reproducción.
+    const timer = window.setTimeout(() => {
       setActiveIndex(index => (index + 1) % count);
-    }, milliseconds);
-    return () => window.clearInterval(timer);
-  }, [count, settings.mode, settings.interval, intervalMs, manualPaused,
-    hovered, focused, reducedMotion, pageVisible]);
+    }, settings.interval * 1000);
+    return () => window.clearTimeout(timer);
+  }, [count, currentIndex, settings.mode, settings.interval, manualPaused,
+    reducedMotion, pageVisible]);
 
   // Conserva brevemente la fotografía anterior debajo de la nueva.
   // Así las animaciones revelan una imagen y no un fondo vacío.
@@ -157,7 +190,7 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
     const last = previousSlide.current;
     const changed = Boolean(last && active && (last.id !== active.id || last.src !== active.src));
     previousSlide.current = active ?? null;
-    if (!changed || reducedMotion || settings.mode === 'static') {
+    if (!changed || thumbnailPreview || reducedMotion || settings.mode === 'static') {
       setOutgoing(null);
       return;
     }
@@ -167,12 +200,8 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
   }, [active?.id, active?.src, reducedMotion, settings.mode, settings.transition]);
 
   function selectSlide(index: number) {
-    if (settings.mode === 'automatic' && index === currentIndex && manualPaused) {
-      setManualPaused(false);
-      return;
-    }
+    // Los indicadores SOLO navegan. No pausan la reproducción automática.
     setActiveIndex(index);
-    if (settings.mode === 'automatic') setManualPaused(true);
   }
 
   return (
@@ -182,15 +211,8 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
       role="region"
       aria-roledescription="carrusel"
       aria-label="Fotografías de portada"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocusCapture={() => setFocused(true)}
-      onBlurCapture={event => {
-        const next = event.relatedTarget;
-        if (!(next instanceof Node) || !event.currentTarget.contains(next)) setFocused(false);
-      }}
     >
-      {outgoing && (
+      {outgoing && outgoing.tipo !== 'video' && (
         <img
           key={`anterior:${outgoing.id}`}
           src={outgoing.src}
@@ -200,7 +222,7 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
         />
       )}
 
-      {active && (
+      {active && active.tipo === 'video' ? <video ref={videoRef} key={active.id} data-visual-part="heroImage" src={active.src} className="hero-carousel__image" controls muted playsInline preload="metadata" onPlay={event => { setVideoPlaying(true); document.querySelectorAll('video').forEach(video=>{if(video!==event.currentTarget)video.pause();}); }} onPause={()=>setVideoPlaying(false)} aria-label={active.alt || 'Video de portada'} /> : active && (
         <img
           key={`${active.id}:${active.src}:${settings.transition}`}
           data-visual-part="heroImage"
@@ -208,29 +230,28 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
           src={active.src}
           alt={active.alt}
           className={`hero-carousel__image hero-carousel__image--transition-${settings.transition}`}
+          style={isOnlineEffectId(settings.transition)
+            ? { animation: `${settings.transition.slice(6)} 750ms ease-in-out both` }
+            : undefined}
         />
       )}
 
+      {active?.tipo === 'video' && <button type="button" className="hero-carousel__video-toggle" aria-label={videoPlaying ? 'Pausar video de portada' : 'Reproducir video de portada'} onClick={()=>{const video=videoRef.current;if(!video)return;if(video.paused)void video.play().catch(()=>undefined);else video.pause();}}>{videoPlaying?'Pausar video':'Reproducir video'}</button>}
       <div
         className="hero-carousel__dots"
         role="group"
         aria-label="Seleccionar fotografía de portada"
-        aria-hidden={!showDots}
-        style={{ display: showDots ? 'flex' : 'none' }}
+        aria-hidden={!showControls}
+        style={{ display: showControls ? 'flex' : 'none' }}
       >
-          {slides.map((slide, index) => (
+          {showDots && slides.map((slide, index) => (
             <button
               key={slide.id}
               type="button"
               className={`hero-carousel__dot${index === currentIndex ? ' is-active' : ''}`}
               aria-current={index === currentIndex ? 'true' : undefined}
-              aria-label={settings.mode === 'automatic'
-                ? index === currentIndex && manualPaused
-                  ? 'Reanudar cambio automático de fotografías'
-                  : `Mostrar fotografía ${index + 1} de ${count} y pausar`
-                : `Mostrar fotografía ${index + 1} de ${count}`}
-              title={settings.mode === 'automatic' && index === currentIndex && manualPaused
-                ? 'Reanudar carrusel' : `Fotografía ${index + 1}`}
+              aria-label={`Mostrar fotografía ${index + 1} de ${count}`}
+              title={`Fotografía ${index + 1}`}
               tabIndex={showDots ? 0 : -1}
               disabled={!showDots}
               onClick={() => selectSlide(index)}
@@ -239,6 +260,27 @@ export function HeroCarousel({ landing, intervalMs }: HeroCarouselProps) {
             </button>
           ))}
       </div>
+      {!thumbnailPreview && count > 1 && settings.mode === 'automatic' && (
+        <button
+          type="button"
+          className="hero-carousel__playback"
+          aria-label={manualPaused ? 'Reanudar carrusel automático' : 'Pausar carrusel automático'}
+          aria-pressed={manualPaused}
+          title={manualPaused ? 'Reanudar reproducción' : 'Pausar reproducción'}
+          onClick={() => setManualPaused(value => !value)}
+        >
+          {manualPaused ? (
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+              <path d="M5 3l8 5-8 5V3z" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+              <rect x="4" y="3" width="2.5" height="10" rx=".6" fill="currentColor" />
+              <rect x="9.5" y="3" width="2.5" height="10" rx=".6" fill="currentColor" />
+            </svg>
+          )}
+        </button>
+      )}
     </div>
   );
 }

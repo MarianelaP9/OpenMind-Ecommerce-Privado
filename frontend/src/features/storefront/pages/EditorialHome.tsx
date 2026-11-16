@@ -1,3 +1,5 @@
+import { useHeroContent } from '../hooks/useHeroContent';
+import { useEffect, useState } from 'react'; // OPENMIND_EDITORIAL_PROMO_V1
 import { HomeSections } from '../../landing/components/HomeSections';
 import { VISUAL_SECTION } from '../visual/sectionIds';
 import { useLandingContent } from '../../landing/hooks/useLandingContent';
@@ -8,14 +10,26 @@ import { LandingStatus } from '../../landing/components/LandingStatus';
 import { Link } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/store/ProductCard';
-import { Badge, Icon } from '../components/ui';
+import { Icon } from '../components/ui';
 import { HeroCarousel } from '../components/HeroCarousel';
 
 export default function EditorialHome() {
   const { featured, categories, content } = useLandingContent();
   const isSectionVisible = useLandingSectionVisibility();
-  const { landing, landingProducts } = useStore();
+  const { landing, landingProducts, visualConfig } = useStore();
+  const [promoPreview, setPromoPreview] = useState<{text:string;visible:boolean}|null>(null);
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{text:string;visible:boolean}>).detail;
+      if (detail && typeof detail.text === 'string' && typeof detail.visible === 'boolean') setPromoPreview(detail);
+    };
+    window.addEventListener('openmind:editor-promo-preview', listener);
+    return () => window.removeEventListener('openmind:editor-promo-preview', listener);
+  }, []);
+  const promoText = promoPreview?.text ?? visualConfig?.hero?.promoText ?? '';
+  const promoVisible = promoPreview?.visible ?? visualConfig?.hero?.promoVisible ?? false;
   const { route } = useStorefrontTemplate();
+  const hero = useHeroContent(landing, route);
 
   return (
     <div data-landing-page="editorial" className="min-w-0 overflow-x-hidden">
@@ -24,7 +38,7 @@ export default function EditorialHome() {
         data-visual-section={VISUAL_SECTION.hero}
         className="relative h-[64vh] sm:h-[72vh] min-h-[400px] sm:min-h-[480px] overflow-hidden"
       >
-        <HeroCarousel landing={landing} />
+        <HeroCarousel landing={landing} onContentChange={hero.onChange} />
         <div
           data-visual-part="heroOverlay"
           className="absolute inset-0 bg-gradient-to-r from-[#0f1623]/80 via-[#0f1623]/40 to-transparent"
@@ -35,20 +49,33 @@ export default function EditorialHome() {
         >
           <div data-visual-part="heroContent" className="w-full min-w-0 max-w-xl animate-fade-in">
             <LandingStatus />
-            <Badge variant="accent" className="mb-3 sm:mb-4">Temporada 2025</Badge>
-            <h1 className="font-display text-3xl sm:text-5xl md:text-7xl text-white leading-tight mb-3 sm:mb-4 break-words">
-              {landing?.titulo}
+            {/* OPENMIND_EDITORIAL_PROMO_V1: solo etiqueta, no cambia portada ni carrusel. */}
+            {promoVisible && promoText.trim() && (
+              <div data-promotional-badge className="flex" style={{ justifyContent: 'var(--visual-hero-promo-align)' }}>
+                <span className="inline-block max-w-full break-words px-3 py-1 font-semibold leading-snug" style={{
+                  backgroundColor: 'var(--visual-hero-promo-background)',
+                  color: 'var(--visual-hero-promo-color)',
+                  fontSize: 'var(--visual-hero-promo-font-size)',
+                  borderRadius: 'var(--visual-hero-promo-radius)',
+                  borderWidth: 'var(--visual-hero-promo-border-width)',
+                  borderColor: 'var(--visual-hero-promo-border-color)',
+                  borderStyle: 'solid',
+                }}>{promoText}</span>
+              </div>
+            )}
+            <h1 hidden={!hero.showTitle} className="font-display text-3xl sm:text-5xl md:text-7xl text-white leading-tight mb-3 sm:mb-4 break-words">
+              {hero.title}
             </h1>
-            <p data-visual-part="heroSubtitle" className="text-white/80 text-base sm:text-lg mb-6 sm:mb-8 break-words">
-              {landing?.descripcion}
+            <p hidden={!hero.showDescription} data-visual-part="heroSubtitle" className="text-white/80 text-base sm:text-lg mb-6 sm:mb-8 break-words">
+              {hero.description}
             </p>
             <div data-visual-part="heroCtaLayout">
               <Link
                 data-visual-section={VISUAL_SECTION.heroCta}
-                to={route('catalogo')}
+                hidden={!hero.showButton} to={hero.href} target={hero.external ? "_blank" : undefined} rel={hero.external ? "noopener noreferrer" : undefined}
                 className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 bg-white text-[var(--foreground)] px-7 py-3.5 rounded-lg font-semibold hover:bg-[var(--muted)] transition-colors"
               >
-                {landing?.texto_boton} →
+                {hero.buttonText} →
               </Link>
             </div>
           </div>

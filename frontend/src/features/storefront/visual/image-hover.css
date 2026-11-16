@@ -4,17 +4,20 @@
   --om-product-transform: var(--om-hover-catalog-transform, none);
   --om-product-overlay-animation: var(--om-hover-catalog-overlay-animation, none);
   --om-product-overlay-background: var(--om-hover-catalog-overlay-background, transparent);
+  --om-product-overlay-opacity: var(--om-hover-catalog-overlay-opacity, 0);
 }
 [data-storefront-visual] [data-landing-page] [data-visual-section="productCard"],
 [data-storefront-visual] [data-visual-kind="featured"] {
   --om-product-transform: var(--om-hover-featured-transform, none);
   --om-product-overlay-animation: var(--om-hover-featured-overlay-animation, none);
   --om-product-overlay-background: var(--om-hover-featured-overlay-background, transparent);
+  --om-product-overlay-opacity: var(--om-hover-featured-overlay-opacity, 0);
 }
 [data-storefront-visual] [data-visual-part="categoryItem"] {
   --om-product-transform: var(--om-hover-category-transform, none);
   --om-product-overlay-animation: var(--om-hover-category-overlay-animation, none);
   --om-product-overlay-background: var(--om-hover-category-overlay-background, transparent);
+  --om-product-overlay-opacity: var(--om-hover-category-overlay-opacity, 0);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -59,6 +62,7 @@
   [data-storefront-visual] [data-visual-section="productCard"]:has(> img):is(:hover,:focus-within)::after,
   [data-storefront-visual] [data-visual-kind="featured"] a:has(> img):is(:hover,:focus-within)::after,
   [data-storefront-visual] [data-visual-part="categoryItem"]:has(> img):is(:hover,:focus-within)::after {
+    opacity: var(--om-product-overlay-opacity, 0);
     animation: var(--om-product-overlay-animation, none);
   }
 }
@@ -128,5 +132,109 @@
   [data-storefront-visual] [data-visual-part="categoryItem"]::after {
     animation: none !important;
     opacity: 0 !important;
+  }
+}
+
+/* OPENMIND_ONLINE_EFFECTS_V1: animación de la fotografía desde fuente validada. */
+[data-storefront-visual] [data-visual-section="productCard"] {
+ --om-online-product-motion:var(--om-hover-catalog-online-motion,none);
+}
+[data-storefront-visual] [data-landing-page] [data-visual-section="productCard"],
+[data-storefront-visual] [data-visual-kind="featured"] {
+ --om-online-product-motion:var(--om-hover-featured-online-motion,none);
+}
+[data-storefront-visual] [data-visual-part="categoryItem"] {
+ --om-online-product-motion:var(--om-hover-category-online-motion,none);
+}
+@media (hover:hover) and (pointer:fine) {
+ [data-storefront-visual] [data-visual-section="productCard"]:is(:hover,:focus-within) img,
+ [data-storefront-visual] [data-visual-kind="featured"] a:has(>img):is(:hover,:focus-within)>img,
+ [data-storefront-visual] [data-visual-part="categoryItem"]:is(:hover,:focus-within) img {
+  animation:var(--om-online-product-motion,none);
+ }
+}
+@media (prefers-reduced-motion:reduce){
+ [data-storefront-visual] [data-visual-section="productCard"] img,
+ [data-storefront-visual] [data-visual-kind="featured"] img,
+ [data-storefront-visual] [data-visual-part="categoryItem"] img{
+  animation:none !important;
+ }
+}
+
+/* Las capas de galería no interceptan punteros; el hover pertenece a la tarjeta. */
+@media (hover:hover) and (pointer:fine) {
+ [data-storefront-visual] [data-visual-section="productCard"]:is(:hover,:focus-within) .om-product-gallery__layer:not([aria-hidden])::after {
+  opacity: var(--om-product-overlay-opacity, 0);
+    animation:var(--om-product-overlay-animation,none);
+ }
+}
+
+/* OPENMIND_CATEGORIES_COMPACT_AND_GALLERY_HOVER_V2
+   El producto principal de Obsidian ahora usa ProductImageGallery (varias fotos).
+   Las reglas anteriores solo reconocían el selector a:has(> img), por lo que
+   el cambio de foto funcionaba pero el efecto de luz desaparecía.
+   Se usan los ajustes existentes del editor; no se agregan efectos obligatorios.
+*/
+@media (hover: hover) and (pointer: fine) {
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery] {
+    position: relative;
+    isolation: isolate;
+  }
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    background: var(--om-product-overlay-background, transparent);
+  }
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery]:is(:hover,:focus-within)::after {
+    opacity: var(--om-product-overlay-opacity, 0);
+    animation: var(--om-product-overlay-animation, none);
+  }
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery] .om-product-gallery__layer img {
+    transition: transform 480ms cubic-bezier(.21,.7,.22,1), filter 400ms ease;
+    transform-origin: center;
+  }
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery]:is(:hover,:focus-within) .om-product-gallery__layer img {
+    transform: var(--om-product-transform, none);
+    animation: var(--om-online-product-motion, none);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery]::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+  [data-storefront-visual] [data-landing-page="catalog"] [data-ob-featured-gallery] .om-product-gallery__layer img {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/* OPENMIND_PRODUCT_HOVER_RUNTIME_V2: movimiento y transicion en capas distintas. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-storefront-visual] .om-product-gallery:not(.om-product-gallery--detail) [data-gallery-active] > img,
+  [data-storefront-visual] [data-visual-part="categoryItem"] img {
+    scale: none !important;
+    rotate: none !important;
+    translate: none !important;
+    transform-origin: center;
+    transition: transform 360ms cubic-bezier(.21,.7,.22,1), filter 360ms ease;
+  }
+  [data-storefront-visual] .om-product-gallery:not(.om-product-gallery--detail):is(:hover,:focus-within) [data-gallery-active] > img,
+  [data-storefront-visual] [data-visual-section="productCard"]:is(:hover,:focus-within) .om-product-gallery:not(.om-product-gallery--detail) [data-gallery-active] > img,
+  [data-storefront-visual] [data-ob-featured-gallery]:is(:hover,:focus-within) .om-product-gallery [data-gallery-active] > img,
+  [data-storefront-visual] [data-visual-part="categoryItem"]:is(:hover,:focus-within) img {
+    transform: var(--om-product-transform, none);
+    animation: var(--om-online-product-motion, none);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-storefront-visual] .om-product-gallery:not(.om-product-gallery--detail) [data-gallery-active] > img {
+    transform: none !important; scale: none !important; animation: none !important;
   }
 }

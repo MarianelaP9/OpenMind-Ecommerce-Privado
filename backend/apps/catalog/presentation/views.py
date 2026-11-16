@@ -57,6 +57,7 @@ from apps.catalog.application.use_cases import (
     ModificarCantidadItemUseCase,
     ObtenerConfiguracionTransbankUseCase,
     ObtenerProductoAdminUseCase,
+    HardDeleteProductUseCase,
     SoftDeleteProductUseCase,
     ValidarDisponibilidadProductoUseCase,
     # Nuevos Casos de Uso y DTOs - Adaptador Transbank
@@ -706,13 +707,54 @@ class ProductDeleteAPIView(APIView):
             )
 
 
+class ProductPermanentDeleteAPIView(APIView):
+    """Elimina definitivamente un producto del catálogo preservando las ventas históricas."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, id_producto):
+        tienda_id = resolver_tienda_id(request, exigir_propietario=True)
+        confirmacion = (
+            request.data.get("confirmacion")
+            if isinstance(request.data, dict)
+            else None
+        ) or request.query_params.get("confirmacion")
+
+        try:
+            use_case = HardDeleteProductUseCase()
+            resultado = use_case.execute(
+                id_producto=id_producto,
+                tienda_id=tienda_id,
+                confirmacion=confirmacion,
+            )
+            return success_response(mensaje=resultado["mensaje"])
+        except LookupError as e:
+            return error_response(
+                mensaje=str(e),
+                codigo="PRODUCTO_NO_ENCONTRADO",
+                status=404,
+            )
+        except ValueError as e:
+            return error_response(
+                mensaje=str(e),
+                codigo="CONFIRMACION_INVALIDA",
+                status=400,
+            )
+        except Exception:
+            return error_response(
+                mensaje="Ocurrió un error interno al intentar eliminar definitivamente el producto",
+                codigo="ERROR_INTERNO",
+                status=500,
+            )
+
+
 class ProductoCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         tienda = resolver_tienda(request, exigir_propietario=True)
 
-        serializer = ProductCreateSerializer(data=request.data)
+        serializer = ProductCreateSerializer(data=request.data, context={"tienda_id": str(tienda.pk)})
         serializer.is_valid(raise_exception=True)
         try:
             product_id = CreateProductUseCase(ProductRepository()).execute(
@@ -826,7 +868,13 @@ class ProductoUpdateView(APIView):
             if not isinstance(revision, str) or not revision:
                 return error_response("Recarga el producto antes de editar: falta revision.", "ERROR_VALIDACION")
             # Validar el documento completo también para PATCH; no perder campos omitidos.
-            serializer = ProductCreateSerializer(data={**original, **request.data})
+            serializer = ProductCreateSerializer(
+                data={**original, **request.data},
+                context={
+                    "existing_images": set(original.get("imagenes") or []),
+                    "tienda_id": tienda_id,
+                },
+            )
             serializer.is_valid(raise_exception=True)
             fields = {key: value for key, value in serializer.validated_data.items()
                       if request.method == 'PUT' or key in request.data}
@@ -1577,6 +1625,50 @@ class VariantPurchaseView(VariantTenantMixin, APIView):
             return Response({"error": f"Error interno: {str(e)}", "codigo": "ERROR_INTERNO"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def url_retorno_webpay(request, destino: str) -> str:
+    """URL de retorno enviada a Webpay: endpoint del backend que acepta POST/GET y redirige a `destino`."""
+    from urllib.parse import urlencode
+    from django.urls import reverse
+    base = request.build_absolute_uri(reverse("pago-transbank-retorno"))
+    return f"{base}?{urlencode({'destino': destino})}"
+
+
+class RetornoTransbankView(APIView):
+    """
+    Puente de retorno desde Webpay
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    PARAMETROS = ("token_ws", "TBK_TOKEN", "TBK_ORDEN_COMPRA", "TBK_ID_SESION")
+
+    def _redirigir(self, request):
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+        from django.http import HttpResponse
+        destino = request.query_params.get("destino", "")
+        try:
+            destino = IniciarPagoTransbankSerializer().validate_return_url(destino)
+        except Exception:
+            return error_response("Destino de retorno no válido.", "DATOS_INVALIDOS", status=400)
+        recibidos = {}
+        for fuente in (request.query_params, request._request.POST):
+            for clave in self.PARAMETROS:
+                valor = fuente.get(clave)
+                if valor:
+                    recibidos[clave] = str(valor)[:512]
+        partes = urlsplit(destino)
+        consulta = [par for par in parse_qsl(partes.query) if par[0] not in self.PARAMETROS]
+        consulta += list(recibidos.items())
+        respuesta = HttpResponse(status=303)
+        respuesta["Location"] = urlunsplit(partes._replace(query=urlencode(consulta)))
+        return respuesta
+
+    def get(self, request):
+        return self._redirigir(request)
+
+    def post(self, request):
+        return self._redirigir(request)
+
+
 class IniciarPagoTransbankView(APIView):
     """
     Inicia la transacción contra Transbank para el checkout.
@@ -1602,7 +1694,7 @@ class IniciarPagoTransbankView(APIView):
             orden_compra=serializer.validated_data["orden_compra"],
             monto=serializer.validated_data["monto"],
             session_id=serializer.validated_data["session_id"],
-            return_url=serializer.validated_data["return_url"],
+            return_url=url_retorno_webpay(request, serializer.validated_data["return_url"]),
             email=serializer.validated_data["email"],
         )
 

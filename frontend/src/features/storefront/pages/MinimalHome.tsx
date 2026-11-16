@@ -1,3 +1,6 @@
+import { ProductImageGallery } from '../components/store/ProductImageGallery';
+import { useStorefrontTemplate } from '../hooks/useStorefrontTemplate';
+import { useHeroContent } from '../hooks/useHeroContent';
 import { HomeSections } from '../../landing/components/HomeSections';
 import { VISUAL_SECTION } from '../visual/sectionIds';
 import { useLandingContent } from '../../landing/hooks/useLandingContent';
@@ -16,12 +19,12 @@ export default function MinimalHome() {
   const { featured, categories, content } = useLandingContent();
   const isSectionVisible = useLandingSectionVisibility();
   const { landing } = useStore();
+  const { route } = useStorefrontTemplate();
   const heroHasPhoto = hasHeroSlides(landing);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
 
   const activeProducts = featured;
-  const floatingProducts = isSectionVisible('Productos destacados') ? featured.slice(0, 4) : [];
   const discoveryProducts = featured.slice(0, 4);
   const moreProducts = featured.slice(4, 6);
 
@@ -42,115 +45,49 @@ export default function MinimalHome() {
     navigate(`catalogo?cat=${encodeURIComponent(category)}`);
   };
 
+  const hero = useHeroContent(landing, route);
   return (
     <div data-landing-page="minimal" className="pb-4 min-w-0 overflow-x-hidden">
 
-      {/* =====================================================
-          HERO / SHOP SEARCH
-      ====================================================== */}
-      <section data-visual-section={VISUAL_SECTION.hero} className="px-4 md:px-8 pt-6 sm:pt-10 md:pt-14">
-        <div data-visual-part="heroOverlay" className="absolute inset-0" /><div data-visual-layout="stack" data-visual-part="heroLayout" className="max-w-6xl mx-auto min-w-0">
-
-          {/* Tarjetas flotantes */}
-          <div data-visual-part="heroDecorations" data-landing-content className="flex justify-center items-end -space-x-6 sm:-space-x-4 md:-space-x-3 mb-4 min-h-[130px] sm:min-h-[170px] md:min-h-[180px] px-2 sm:px-6 max-w-full overflow-x-hidden">
-
-            {!floatingProducts.length && heroHasPhoto && (
-              <div
-                data-visual-part="heroImageFallback"
-                className="relative h-[180px] w-full max-w-[640px] overflow-hidden rounded-2xl"
-              >
-                <HeroCarousel landing={landing} />
+      {/* OPENMIND_SOFT_DISCOVERY_COMPACT_HERO_V1
+          Soft Discovery: composición editorial compacta. Los productos destacados
+          conservan su sección habitual más abajo, sin duplicaciones flotantes.
+          Los atributos data-visual permiten continuar editando desde Diseño. */}
+      <section data-visual-section={VISUAL_SECTION.hero} className="px-4 md:px-8 py-8">
+        <div data-visual-part="heroOverlay" className="absolute inset-0" />
+        <div data-visual-layout="stack" data-visual-part="heroLayout" className="max-w-6xl mx-auto min-w-0">
+          <div className={`om-minimal-hero-grid ${heroHasPhoto ? '' : 'om-minimal-hero-grid--no-media'}`}>
+            <div data-visual-part="heroContent" className="om-minimal-hero-copy">
+              <div data-visual-part="heroTitleBlock" className="w-full min-w-0">
+                <LandingStatus />
+                <h1 hidden={!hero.showTitle} className="font-semibold text-[#151515] break-words">
+                  {hero.title}
+                </h1>
               </div>
-            )}
-            {floatingProducts.map((product, index) => {
-              const rotations = [
-                '-rotate-6 translate-y-4',
-                'rotate-3 -translate-y-3',
-                '-rotate-2 -translate-y-1',
-                'rotate-6 translate-y-5',
-              ];
 
-              return (
-                <Link
-                  key={product.id}
-                  to={`producto/${product.id}`}
-                  className={`
-                    relative
-                    w-[92px] sm:w-[130px] md:w-[150px]
-                    shrink-0
-                    bg-white
-                    rounded-2xl
-                    p-1.5 sm:p-2
-                    shadow-lg
-                    border
-                    border-black/5
-                    transition-transform
-                    duration-300
-                    hover:rotate-0
-                    hover:-translate-y-3
-                    hover:z-20
-                    ${rotations[index] ?? ''}
-                  `}
-                >
-                  <div className="aspect-[4/3] rounded-xl overflow-hidden bg-gray-100">
-                    <img
-                      src={product.images[0]}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+              <p hidden={!hero.showDescription} data-visual-part="heroSubtitle" className="text-gray-700">
+                {hero.description}
+              </p>
 
-                  <div className="px-1 pt-2 pb-1">
-                    <p className="text-[10px] text-gray-500 truncate">
-                      {product.category}
-                    </p>
+              {hero.showButton && hero.buttonText && (
+                <div data-visual-part="heroCtaLayout" className="om-minimal-hero-cta">
+                  <Link data-visual-section={VISUAL_SECTION.heroCta} to={hero.href}
+                    target={hero.external ? '_blank' : undefined}
+                    rel={hero.external ? 'noopener noreferrer' : undefined}
+                    className="inline-flex min-h-11 items-center rounded-full bg-[var(--primary)] px-6 py-3 font-semibold text-[var(--on-primary)]">
+                    {hero.buttonText}
+                  </Link>
+                </div>
+              )}
 
-                    <p className="text-xs font-semibold text-[#171717] truncate mt-0.5">
-                      {product.name}
-                    </p>
-
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-[10px] text-[var(--primary)]">
-                        ★★★★★
-                      </span>
-
-                      <span className="text-[9px] text-gray-500">
-                        5.0
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-
-          </div>
-
-          {/* Carrusel independiente: conserva intactas las tarjetas de productos. */}
-          {floatingProducts.length > 0 && heroHasPhoto && (
-            <div className="relative mx-auto mb-5 h-[160px] sm:h-[200px] w-full max-w-[640px] overflow-hidden rounded-2xl">
-              <HeroCarousel landing={landing} />
-            </div>
-          )}
-
-          {/* Título */}
-          <div data-visual-part="heroTitleBlock" className="text-center min-w-0">
-            <LandingStatus />
-            <h1 className="text-[clamp(2.5rem,11vw,4.5rem)] sm:text-[92px] md:text-[118px] leading-none tracking-[-0.06em] sm:tracking-[-0.08em] font-semibold text-[#151515] break-words">
-              {landing?.titulo}
-            </h1>
-          </div>
-
-          <p data-visual-part="heroSubtitle" className="text-center text-gray-600 mt-4 px-2 break-words">{landing?.descripcion}</p>
-
-          {/* Buscador */}
           <form data-visual-part="heroCtaLayout"
             onSubmit={handleSearch}
-            className="max-w-3xl mx-auto mt-6 sm:mt-8 w-full"
+            className="om-minimal-hero-search w-full max-w-2xl mx-auto mt-6 sm:mt-8 flex justify-center"
           >
-            <div data-landing-search className="bg-white rounded-3xl sm:rounded-full border border-black/5 shadow-sm p-2 pl-4 sm:pl-6 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3">
+            <div data-landing-search className="om-minimal-search-field w-full min-w-0 bg-white rounded-full border border-black/10 shadow-sm p-1.5 pl-3.5 sm:p-2 sm:pl-6 flex flex-nowrap items-center gap-2 sm:gap-3">
 
               <svg
-                className="w-5 h-5 text-gray-500 flex-shrink-0"
+                className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 flex-shrink-0"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -168,19 +105,19 @@ export default function MinimalHome() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="What are you shopping for today?"
+                placeholder="¿Qué estás buscando hoy?"
                 aria-label="Buscar productos"
-                className="flex-1 min-w-[140px] h-10 bg-transparent outline-none text-sm md:text-base text-[#171717] placeholder:text-gray-500"
+                className="flex-1 min-w-0 w-0 h-10 sm:h-11 bg-transparent outline-none text-xs sm:text-sm md:text-base text-[#171717] placeholder:text-gray-500"
               />
 
-              <button data-visual-section={VISUAL_SECTION.heroCta}
+              <button
                 type="submit"
-                aria-label={landing?.texto_boton || 'Buscar'}
-                className="px-5 min-w-11 min-h-11 w-full sm:w-auto gap-2 flex-shrink-0 rounded-full bg-[var(--primary)] text-[var(--on-primary)] flex items-center justify-center hover:scale-105 transition-transform"
+                aria-label="Buscar productos"
+                className="om-minimal-search-submit min-h-11 shrink-0 gap-1.5 rounded-full bg-[var(--primary)] text-[var(--on-primary)] inline-flex items-center justify-center text-xs sm:text-sm font-semibold whitespace-nowrap"
               >
-                {landing?.texto_boton}
+                <span>Buscar</span>
                 <svg
-                  className="w-4 h-4"
+                  className="w-4 h-4 shrink-0"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -197,7 +134,14 @@ export default function MinimalHome() {
 
             </div>
           </form>
+            </div>
 
+            {heroHasPhoto && (
+              <div data-visual-part="heroFrame" className="om-minimal-hero-media">
+                <HeroCarousel landing={landing} onContentChange={hero.onChange} />
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -208,16 +152,16 @@ export default function MinimalHome() {
           data-visual-section={VISUAL_SECTION.sections}
           data-visual-kind="benefits"
           data-landing-content
-          className="w-full px-4 md:px-8 py-5"
+          className="w-full px-4 md:px-8 py-6"
         >
-          <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-start gap-x-12 gap-y-4">
+          <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start gap-6">
             {content.beneficios.map((benefit, index) => (
-              <div key={index} className="min-w-0 max-w-full sm:max-w-[260px] flex items-start gap-3">
+              <div key={index} className="min-w-0 max-w-full flex items-start gap-3">
                 <Icon name={benefit.icono} className="w-5 h-5 shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold leading-5 break-words">{benefit.titulo}</p>
                   {benefit.descripcion && (
-                    <p className="mt-1 text-xs leading-5 opacity-70 break-words">{benefit.descripcion}</p>
+                    <p className="mt-1 text-xs leading-5 opacity-85 break-words">{benefit.descripcion}</p>
                   )}
                 </div>
               </div>
@@ -227,14 +171,19 @@ export default function MinimalHome() {
       )}
 
       <HomeSections commerce={{
-        "sistema:categorias": isSectionVisible('Categorías') && categories.length > 0 && (<div data-visual-section={VISUAL_SECTION.categories} data-visual-part="categoryList" className="mt-5 px-4 flex flex-wrap justify-center gap-2">
+        "sistema:categorias": isSectionVisible('Categorías') && categories.length > 0 && (
+          <div
+            data-visual-section={VISUAL_SECTION.categories}
+            data-visual-part="categoryList"
+            className="mt-6 px-4 md:px-8 flex flex-wrap justify-center gap-3"
+          >
 
         {categories.map((category) => (
           <button data-visual-part="categoryItem"
             key={category}
             type="button"
             onClick={() => goToCategory(category)}
-            className="min-h-10 px-4 py-2 rounded-full bg-white border border-black/5 text-xs text-gray-600 hover:bg-[var(--primary)] hover:text-[var(--on-primary)] transition-colors"
+            className="min-h-11 px-5 py-2.5 rounded-full bg-white border border-black/10 text-sm font-medium text-[#171717] hover:bg-[var(--primary)] hover:text-[var(--on-primary)] transition-colors shadow-2xs"
           >
             {category}
           </button>
@@ -247,7 +196,7 @@ export default function MinimalHome() {
           <div className="flex items-end justify-between gap-6 mb-7">
 
             <div>
-              <p className="text-xs text-gray-500 mb-2">
+              <p className="text-xs font-medium text-gray-600 mb-2">
                 Para descubrir sin prisa
               </p>
 
@@ -258,7 +207,7 @@ export default function MinimalHome() {
 
             <Link
               to="catalogo"
-              className="hidden sm:inline-flex text-sm text-[var(--primary)] hover:opacity-60 transition-opacity"
+              className="hidden sm:inline-flex text-sm font-semibold text-[var(--primary)] hover:opacity-75 transition-opacity"
             >
               Ver todo →
             </Link>
@@ -268,20 +217,16 @@ export default function MinimalHome() {
           <div data-visual-section={VISUAL_SECTION.productGrid} data-visual-grid="products" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
             {discoveryProducts.map((product) => (
-              <Link data-visual-section={VISUAL_SECTION.productCard} data-visual-card="custom"
+              <div data-visual-section={VISUAL_SECTION.productCard} data-visual-card="custom"
                 key={product.id}
-                to={`producto/${product.id}`}
-                className="group relative rounded-[24px] overflow-hidden bg-gray-200 aspect-[4/5]"
+
+                className="relative relative group relative rounded-[24px] overflow-hidden bg-gray-200 aspect-[4/5]"
               >
-                <img
-                  src={product.images[0]}
-                  alt={product.name}
-                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
+                <ProductImageGallery images={product.images} alt={product.name} href={`producto/${product.id}`} imageClassName="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
 
                 <div data-visual-part="body" className="absolute inset-x-3 bottom-3 bg-white/95 backdrop-blur-sm rounded-2xl p-4">
 
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-600 font-medium">
                     {product.category}
                   </p>
 
@@ -289,11 +234,11 @@ export default function MinimalHome() {
 
                     <div className="min-w-0">
                       <h3 className="font-semibold text-sm text-[#171717] truncate">
-                        {product.name}
+                        <Link to={`producto/${product.id}`}>{product.name}</Link>
                       </h3>
 
                       <p data-visual-part="description">{product.description}</p>
-                      <p data-visual-part="price" className="text-xs text-gray-500 mt-1">
+                      <p data-visual-part="price" className="text-xs font-semibold text-gray-700 mt-1">
                         {formatPrice(product.basePrice)}
                       </p>
                     </div>
@@ -304,7 +249,7 @@ export default function MinimalHome() {
 
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
 
           </div>
@@ -330,13 +275,13 @@ export default function MinimalHome() {
                 className="absolute inset-0 w-full h-full object-cover"
               />
 
-              <div className="absolute inset-0 bg-black/30" />
+              <div className="absolute inset-0 bg-black/35" />
 
               <div className="relative z-10 min-h-[340px] sm:min-h-[420px] md:min-h-[520px] flex items-end p-5 sm:p-7 md:p-12">
 
-                <div className="max-w-xl text-white min-w-0">
+                <div className="max-w-2xl text-white min-w-0">
 
-                  <p className="text-xs uppercase tracking-[0.18em] text-white/70 mb-3 sm:mb-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/85 mb-3 sm:mb-4">
                     Nueva selección
                   </p>
 
@@ -348,7 +293,7 @@ export default function MinimalHome() {
 
                   <Link
                     to="catalogo"
-                    className="inline-flex min-h-11 items-center mt-6 sm:mt-7 bg-white text-[#171717] rounded-full px-5 py-3 text-sm font-medium hover:bg-white/90 transition-colors"
+                    className="inline-flex min-h-11 items-center mt-6 sm:mt-7 bg-white text-[#171717] rounded-full px-6 py-3 text-sm font-semibold hover:bg-white/90 transition-colors"
                   >
                     Explorar colección
                     <span className="ml-2">→</span>
@@ -373,7 +318,7 @@ export default function MinimalHome() {
 
             <Link
               to="catalogo"
-              className="text-sm text-[var(--primary)] hover:opacity-60 transition-opacity"
+              className="text-sm font-semibold text-[var(--primary)] hover:opacity-75 transition-opacity"
             >
               Ver catálogo →
             </Link>
@@ -384,38 +329,34 @@ export default function MinimalHome() {
             <div data-visual-section={VISUAL_SECTION.productGrid} data-visual-grid="products" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
               {moreProducts.map((product) => (
-                <Link data-visual-section={VISUAL_SECTION.productCard} data-visual-card="custom"
+                <div data-visual-section={VISUAL_SECTION.productCard} data-visual-card="custom"
                   key={product.id}
-                  to={`producto/${product.id}`}
-                  className="group"
-                >
-                  <div data-visual-part="cardImage" className="aspect-square rounded-[22px] overflow-hidden bg-gray-200">
 
-                    <img
-                      src={product.images[0]}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+                  className="relative group"
+                >
+                  <div data-visual-part="cardImage" className="relative aspect-square rounded-[22px] overflow-hidden bg-gray-200">
+
+                    <ProductImageGallery images={product.images} alt={product.name} href={`producto/${product.id}`} imageClassName="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
 
                   </div>
 
                   <div data-visual-part="body" className="pt-3">
 
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    <p className="text-[11px] uppercase tracking-wide text-gray-600 font-medium">
                       {product.category}
                     </p>
 
                     <h3 className="text-sm font-semibold text-[#171717] mt-1 truncate">
-                      {product.name}
+                      <Link to={`producto/${product.id}`}>{product.name}</Link>
                     </h3>
 
-                    <p data-visual-part="price" className="text-sm text-gray-500 mt-1">
+                    <p data-visual-part="price" className="text-sm font-semibold text-gray-700 mt-1">
                       {formatPrice(product.basePrice)}
                     </p>
                     <p data-visual-part="description">{product.description}</p>
                     <span data-visual-part="buyButton">Ver opciones →</span>
                   </div>
-                </Link>
+                </div>
               ))}
 
             </div>

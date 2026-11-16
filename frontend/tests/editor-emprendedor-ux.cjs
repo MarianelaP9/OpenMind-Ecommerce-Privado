@@ -53,12 +53,14 @@ test('saving shows progress, errors keep the draft, retry clears dirty, and undo
   const saving=button(tree,'Guardar cambios').props.onClick();tree=h.render();assert(tree.some(n=>n.props?.children==='Guardando…'));assert.equal(button(tree,'Guardando…').props.disabled,true);await saving;h.flush();tree=h.render();assert(tree.some(n=>n.props?.children==='✓ Guardado'));
   tree.find(n=>n.type?.name==='VisualInspector').props.onEdit('hero.titleSize',72);tree=h.render();h.fail();await button(tree,'Guardar cambios').props.onClick();h.flush();tree=h.render();assert(tree.some(n=>n.props?.children==='No se pudo guardar'));assert.equal(button(tree,'Guardar cambios').props.disabled,false);button(tree,'Descartar cambios').props.onClick();tree=h.render();assert.equal(tree.find(n=>n.type?.name==='VisualInspector').props.effective.hero.titleSize,84);
 });
-test('template choice can be saved alone and a discarded choice returns to the saved template',async () =>{
-  const h=editorHarness();let tree=h.render();button(tree,'Plantillas').props.onClick();tree=h.render();assert.equal(tree.find(n=>n.props?.id==='ve-properties').props.hidden,false);
-  tree.find(n=>n.type?.name==='TemplateGallery').props.onSelect('minimal');tree=h.render();assert.equal(button(tree,'Guardar cambios').props.disabled,false);assert(tree.find(n=>n.type==='iframe').props.src.startsWith('/plantilla/2'));
-  await button(tree,'Guardar cambios').props.onClick();h.flush();tree=h.render();assert.equal(h.config().template,'minimal');assert.equal(button(tree,'Guardar cambios').props.disabled,true);
-  tree.find(n=>n.type?.name==='TemplateGallery').props.onSelect('catalog');tree=h.render();button(tree,'Descartar cambios').props.onClick();tree=h.render();assert(tree.find(n=>n.type==='iframe').props.src.startsWith('/plantilla/2'));assert.equal(button(tree,'Guardar cambios').props.disabled,true);
+test('saving an alternate template preserves the active template and discard restores the draft',async () =>{
+  const h=editorHarness();let tree=h.render();button(tree,'Plantillas').props.onClick();tree=h.render();
+  tree.find(n=>n.type?.name==='TemplateGallery').props.onSelect('minimal');tree=h.render();assert.equal(button(tree,'Guardar cambios').props.disabled,true);assert(tree.find(n=>n.type==='iframe').props.src.startsWith('/plantilla/2'));
+  button(tree,'Diseño y apariencia').props.onClick();tree=h.render();tree.find(n=>n.type?.name==='VisualInspector').props.onEdit('hero.titleSize',84);tree=h.render();assert.equal(button(tree,'Guardar cambios').props.disabled,false);
+  await button(tree,'Guardar cambios').props.onClick();h.flush();tree=h.render();assert.equal(h.config().template,'editorial');assert.equal(button(tree,'Guardar cambios').props.disabled,true);assert.equal(h.config().themeEditor.minimal.visualConfig.hero.titleSize,84);
+  tree.find(n=>n.type?.name==='VisualInspector').props.onEdit('hero.titleSize',72);tree=h.render();button(tree,'Descartar cambios').props.onClick();tree=h.render();assert.equal(button(tree,'Guardar cambios').props.disabled,true);assert.equal(h.config().themeEditor.minimal.visualConfig.hero.titleSize,84);
 });
+
 test('four visual templates expose their personality and a real selection action',async () =>{
   const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');const {TemplateGallery}=load('src/features/admin/visualEditor/templates.tsx');
   const html=renderToStaticMarkup(React.createElement(TemplateGallery,{selected:'editorial',onSelect(){}}));for(const name of ['Studio Pop','Soft Discovery','Velta Editorial','Obsidian Showcase'])assert(html.includes(name));assert.equal((html.match(/aria-pressed="true"/g)||[]).length,1);assert(html.includes('Probar esta plantilla'));
@@ -91,8 +93,11 @@ test('preview keyboard selection, product button context and university image pr
   const {connectVisualPreview}=load('src/features/admin/visualEditor/preview.ts'),{resolveVisualConfig}=load('src/features/storefront/visual/resolveVisualConfig.ts');const listeners=new Map();
   const attributes=new Map([['src','photo.jpg']]);const image={tagName:'IMG',dataset:{},style:{objectFit:'cover',objectPosition:'',transform:'',transformOrigin:'',borderRadius:''},src:'photo.jpg',getAttribute:key=>attributes.get(key)??null,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key),hasAttribute:()=>false,closest(selector){return selector==='img'?this:null;}};
   const card={tagName:'ARTICLE',dataset:{visualSection:'productCard'},getAttribute:key=>key==='data-visual-section'?'productCard':null,setAttribute(){},removeAttribute(){},closest:()=>null};
-  const doc={body:{},head:{appendChild(){}},createElement:()=>({remove(){}}),querySelectorAll:selector=>selector==='img'?[image]:selector==='[data-visual-section]'?[card]:[],addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),defaultView:{}};
+  const events=[];
+  const doc={body:{},head:{appendChild(){}},createElement:()=>({remove(){}}),createEvent:()=>({initCustomEvent(type,_bubbles,_cancelable,detail){this.type=type;this.detail=detail;},initEvent(type){this.type=type;}}),querySelectorAll:selector=>selector==='img'?[image]:selector==='[data-visual-section]'?[card]:[],addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),defaultView:{dispatchEvent:event=>events.push(event)}};
   let selected,selectedImage,protectedImage;const connection=connectVisualPreview(doc,(section,href,group)=>selected={section,group},(key,src)=>selectedImage={key,src},institutional=>protectedImage=institutional);connection.update(resolveVisualConfig(),{});
+  assert(events.some(event=>event.type==='openmind:editor-promo-preview'));
+  assert(events.some(event=>event.type==='openmind:carousel:sync'));
   assert.equal(image.tabIndex,0);assert.equal(card.tabIndex,0);
   const event=target=>({target,preventDefault(){},stopPropagation(){},stopImmediatePropagation(){}});listeners.get('keydown')({...event(image),key:'Enter'});assert(selectedImage.key.startsWith('image-key-'));assert.equal(attributes.get('data-editor-image-selected'),'true');
   const button={tagName:'BUTTON',closest:selector=>selector==='[data-visual-section]'?card:selector==='button,a'?{}:null};listeners.get('click')(event(button));assert.equal(selected.section,'productCard');assert.equal(selected.group,'Botón');

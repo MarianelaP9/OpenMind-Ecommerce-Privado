@@ -1,18 +1,23 @@
+import { MOVEMENT_EFFECTS, LIGHT_EFFECTS } from './effectLibrary';
+import { CAROUSEL_TRANSITIONS } from './carouselTransitionLibrary';
+import { isOnlineEffectId } from './onlineEffects';
 import { VISUAL_DEFAULTS } from './defaults';
 import { VISUAL_PRESETS } from './presets';
 import type { TemplateId } from '../data/mockData';
 import type { DeepPartial, VisualConfig, VisualConfigOverrides, VisualSections, Viewport } from './types';
-import { ALIGNMENTS, DENSITIES, SHAPES, SHADOWS, FONT_FAMILIES } from './types';
+import { ALIGNMENTS, DENSITIES, SHAPES, LOGO_SHAPES, SHADOWS, FONT_FAMILIES } from './types';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 const enumValues: Record<string, readonly string[]> = {
-  align: ALIGNMENTS, titleAlign: ALIGNMENTS,
+  carouselMode: ['static', 'manual', 'automatic'], productImageMode: ['static', 'hover', 'automatic'], catalogProductImageMode: ['static', 'hover', 'automatic'], galleryArrowStyle: ['circulares', 'redondeadas', 'solo-flechas'], productImageTransition: ['fade', 'slide', 'zoom'],
+  align: ALIGNMENTS, titleAlign: ALIGNMENTS, promoAlign: ALIGNMENTS, // OPENMIND_EDITORIAL_PROMO_V1
   horizontalAlign: ALIGNMENTS, navAlign: ALIGNMENTS,
-  logoPosition: ALIGNMENTS, verticalAlign: ['top', 'center', 'bottom'], imagePosition: ['top', 'center', 'bottom'],
+  logoPosition: ALIGNMENTS, institutionLogoPosition: ALIGNMENTS, verticalAlign: ['top', 'center', 'bottom'], imagePosition: ['top', 'center', 'bottom'],
   density: DENSITIES, shape: SHAPES,
+  storeLogoShape: LOGO_SHAPES, institutionLogoShape: LOGO_SHAPES,
   buttonShape: SHAPES, shadow: SHADOWS,
   style: ['none', 'solid', 'dashed'], linkStyle: ['plain', 'underline', 'pill'],
   ctaPosition: ['inline', 'below'], size: ['small', 'medium', 'large'],
@@ -23,6 +28,11 @@ const enumValues: Record<string, readonly string[]> = {
 
 function validLeaf(value: unknown, baseline: unknown, path: string): boolean {
   const key = path.split('.').pop()!;
+  if (key === 'detailProductImageTransition' && value === 'none') return true;
+  if (['carouselTransition', 'productImageTransition', 'catalogProductImageTransition', 'detailProductImageTransition'].includes(key)) return typeof value === 'string' && (CAROUSEL_TRANSITIONS.some(item => item.id === value) || isOnlineEffectId(value));
+  if (/^hover(?:Featured|Catalog|Category)(?:Motion|Light)$/.test(key)) return typeof value === 'string' && (isOnlineEffectId(value) || (key.endsWith('Motion') ? MOVEMENT_EFFECTS : LIGHT_EFFECTS).some(item => item.id === value));
+  if (key === 'productImageInterval' || key === 'catalogProductImageInterval') return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= (key === 'catalogProductImageInterval' ? 10 : 20);
+  if (key === 'carouselInterval') return typeof value === 'number' && Number.isInteger(value) && value >= 2 && value <= 20;
   if (key === 'brandingVisible') return value === true;
   if (typeof baseline === 'boolean') return typeof value === 'boolean';
   if (typeof baseline === 'number') {
@@ -30,12 +40,16 @@ function validLeaf(value: unknown, baseline: unknown, path: string): boolean {
     if (key === 'version') return value === 1;
     if (key === 'columns' || path.includes('.columns.')) return Number.isInteger(value) && value >= 1 && value <= 12;
     if (key === 'overlayOpacity') return value <= 1;
+    if (key === 'institutionLogoGap') return value <= 80;
+    if (key === 'storeLogoPadding' || key === 'institutionLogoPadding') return value <= 24;
     if (key === 'fontWeight') return Number.isInteger(value) && value >= 1 && value <= 1000;
     if (key === 'imageRatio') return value > 0 && value <= 10;
     if (key === 'lineHeight') return value > 0 && value <= 4;
     if (/Size$/.test(key) || key === 'baseSize') return value > 0;
     return true; // Zero is meaningful for spacing, dimensions, radius and borders.
   }
+  // OPENMIND_EDITORIAL_PROMO_V1: texto plano, no se interpreta como CSS ni HTML.
+  if (key === 'promoText') return typeof value === 'string' && value.length <= 100;
   if (typeof baseline === 'string' && typeof value === 'string') {
     if (key === 'layout') {
       const section = path.split('.')[0];

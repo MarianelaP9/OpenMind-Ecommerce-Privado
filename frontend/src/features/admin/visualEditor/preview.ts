@@ -57,6 +57,8 @@ export function connectVisualPreview(doc: Document, onSelect: (section: VisualSe
     const target = event.target;
     if (!target || typeof (target as Element).closest !== 'function') return;
     const element = target as Element;
+    if (!imageMode && element.closest('[data-visual-page="product"]') &&
+      element.closest('button[data-page-gallery-item], .om-product-gallery--detail button.om-product-gallery__arrow')) return;
     event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
     const block = element.closest<HTMLElement>('[data-content-block-id]');
     if (block?.dataset.contentBlockId && onBlock) { selectedBlock = block.dataset.contentBlockId; selected = 'global'; apply(); onBlock(selectedBlock); return; }
@@ -86,7 +88,10 @@ export function connectVisualPreview(doc: Document, onSelect: (section: VisualSe
   const observer = Observer ? new Observer(apply) : null;
   observer?.observe(doc.body, { childList: true, subtree: true });
   return {
-    update(config: VisualConfig, nextImages: Record<string, ThemeImageSetting>) { effective = config; loadVisualFonts(config, doc); variableCss = `[data-storefront-visual]{${Object.entries(visualConfigWithCarouselVars(effective)).map(([key,value]) => `${key}:${value}!important;`).join('')}}`; images = nextImages; apply(); const event = doc.createEvent('Event'); event.initEvent('openmind:carousel:sync', false, false); doc.defaultView?.dispatchEvent(event); },
+    update(config: VisualConfig, nextImages: Record<string, ThemeImageSetting>) { effective = config; // OPENMIND_EDITORIAL_PROMO_V1
+      const promoEvent = doc.createEvent('CustomEvent');
+      promoEvent.initCustomEvent('openmind:editor-promo-preview', false, false, { text: config.hero.promoText, visible: config.hero.promoVisible });
+      doc.defaultView?.dispatchEvent(promoEvent); loadVisualFonts(config, doc); variableCss = `[data-storefront-visual]{${Object.entries(visualConfigWithCarouselVars(effective, doc)).map(([key,value]) => `${key}:${value}!important;`).join('')}}`; images = nextImages; apply(); const event = doc.createEvent('CustomEvent'); event.initCustomEvent('openmind:carousel:sync', false, false, config.hero); doc.defaultView?.dispatchEvent(event); },
     content(value: import('../../landing/types/landing.types').LandingConfig | undefined) {
       if (!value) return;
       const event = doc.createEvent('CustomEvent');
